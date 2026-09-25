@@ -1,0 +1,6 @@
+{
+  "name": "Mentor Log",
+  "description": "A dedicated session logging and tracking dashboard for technical mentors across full stack, cloud, DevOps, and custom tracks.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
