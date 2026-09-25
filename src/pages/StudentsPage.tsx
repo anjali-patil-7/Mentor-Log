@@ -21,6 +21,7 @@ import { exportStudentsToExcel, exportStudentsToCsv } from '../utils/export';
 import { deleteStudentDB } from '../db/operations';
 import { useToast } from '../components/Toast';
 import { Pagination } from '../components/Pagination';
+import { DOMAIN_OPTIONS, DOMAIN_COURSES, ALL_COURSES, DomainType, resolveDomainAndCourse, DOMAIN_THEMES } from '../utils/domainCourses';
 
 export function StudentsPage() {
   const dispatch = useAppDispatch();
@@ -30,43 +31,61 @@ export function StudentsPage() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDomain, setSelectedDomain] = useState('all');
+  const [selectedCourse, setSelectedCourse] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(10);
 
   // Reset pagination to page 1 when search or filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedDomain]);
+  }, [searchQuery, selectedDomain, selectedCourse]);
 
-  // Compute student stats (total sessions, total mentored hours)
-  const studentStatsMap = new Map<string, { totalSessions: number; totalMinutes: number }>();
-  sessions.forEach((s) => {
-    const key = s.studentId || s.studentName;
-    if (!studentStatsMap.has(key)) {
-      studentStatsMap.set(key, { totalSessions: 0, totalMinutes: 0 });
-    }
-    const current = studentStatsMap.get(key)!;
-    current.totalSessions++;
-    const status = s.sessionStatus || s.classStatus || 'Completed';
-    if (status !== 'Cancelled') {
-      current.totalMinutes += s.durationMinutes || 0;
-    }
-  });
+  // Robust function to compute each student's stats
+  const getStudentStats = (student: typeof students[0]) => {
+    const matched = sessions.filter(
+      (s) =>
+        s.studentId === student.studentId ||
+        s.studentId === student.id ||
+        (student.studentName && s.studentName.toLowerCase() === student.studentName.toLowerCase())
+    );
+    const totalSessions = matched.length;
+    const totalMinutes = matched.reduce((acc, s) => {
+      const status = s.sessionStatus || s.classStatus || 'Completed';
+      return acc + (status !== 'Cancelled' ? (s.durationMinutes || 0) : 0);
+    }, 0);
+    return {
+      totalSessions,
+      totalMinutes,
+      formattedHours: formatMentorHours(totalMinutes),
+    };
+  };
+
+  const availableCourses =
+    selectedDomain !== 'all' && DOMAIN_COURSES[selectedDomain as DomainType]
+      ? DOMAIN_COURSES[selectedDomain as DomainType]
+      : ALL_COURSES;
 
   const query = searchQuery.trim().toLowerCase();
   const filteredStudents = students.filter((s) => {
+    const { domain, course } = resolveDomainAndCourse(s.domain, s.course);
+
     if (query) {
       const nameMatch = s.studentName.toLowerCase().includes(query);
       const idMatch = s.studentId.toLowerCase().includes(query);
       const emailMatch = (s.email || '').toLowerCase().includes(query);
-      const domainMatch = (s.domain || '').toLowerCase().includes(query);
+      const domainMatch = domain.toLowerCase().includes(query);
+      const courseMatch = course.toLowerCase().includes(query);
 
-      if (!nameMatch && !idMatch && !emailMatch && !domainMatch) {
+      if (!nameMatch && !idMatch && !emailMatch && !domainMatch && !courseMatch) {
         return false;
       }
     }
 
-    if (selectedDomain !== 'all' && s.domain !== selectedDomain) {
+    if (selectedDomain !== 'all' && domain !== selectedDomain) {
+      return false;
+    }
+
+    if (selectedCourse !== 'all' && course !== selectedCourse) {
       return false;
     }
 
@@ -142,17 +161,37 @@ export function StudentsPage() {
           />
         </div>
 
-        {/* Domain Select Filter */}
-        <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+        {/* Domain & Course Select Filters */}
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
           <select
             value={selectedDomain}
-            onChange={(e) => setSelectedDomain(e.target.value)}
-            className="px-3 py-1.5 text-xs bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-800 dark:text-neutral-200 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            onChange={(e) => {
+              setSelectedDomain(e.target.value);
+              setSelectedCourse('all');
+            }}
+            aria-label="Filter by domain"
+            className="px-2.5 py-1.5 text-xs bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-800 dark:text-neutral-200 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
           >
             <option value="all">All Domains</option>
-            {uniqueDomains.map((d) => (
+            {DOMAIN_OPTIONS.map((d) => (
               <option key={d} value={d}>
                 {d}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={selectedCourse}
+            onChange={(e) => setSelectedCourse(e.target.value)}
+            aria-label="Filter by course"
+            className="px-2.5 py-1.5 text-xs bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-800 dark:text-neutral-200 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 max-w-[170px] truncate"
+          >
+            <option value="all">
+              {selectedDomain !== 'all' ? `All ${selectedDomain} Courses` : 'All Courses'}
+            </option>
+            {availableCourses.map((c) => (
+              <option key={c} value={c}>
+                {c}
               </option>
             ))}
           </select>
@@ -172,7 +211,7 @@ export function StudentsPage() {
                 <tr className="border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-800/50 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
                   <th className="py-3 px-4">Student ID</th>
                   <th className="py-3 px-4">Student Name</th>
-                  <th className="py-3 px-4">Domain / Track</th>
+                  <th className="py-3 px-4">Domain & Course</th>
                   <th className="py-3 px-4">Contact Info</th>
                   <th className="py-3 px-4">Joining Date</th>
                   <th className="py-3 px-4 text-center">Sessions</th>
@@ -183,8 +222,9 @@ export function StudentsPage() {
               </thead>
               <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800 text-xs sm:text-sm">
                 {paginatedStudents.map((student) => {
-                  const stats = studentStatsMap.get(student.studentId) || studentStatsMap.get(student.studentName) || { totalSessions: 0, totalMinutes: 0 };
-                  const formattedHours = formatMentorHours(stats.totalMinutes);
+                  const stats = getStudentStats(student);
+                  const { domain, course } = resolveDomainAndCourse(student.domain, student.course);
+                  const themeColor = DOMAIN_THEMES[domain]?.primary || '#4F46E5';
 
                   return (
                     <tr
@@ -212,11 +252,29 @@ export function StudentsPage() {
                         </Link>
                       </td>
 
-                      {/* Domain */}
+                      {/* Domain & Course */}
                       <td className="py-3 px-4 whitespace-nowrap">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
-                          {student.domain || 'Full Stack'}
-                        </span>
+                        <div className="flex flex-col gap-0.5 items-start">
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border"
+                            style={{
+                              backgroundColor: `${themeColor}15`,
+                              borderColor: `${themeColor}35`,
+                              color: themeColor,
+                            }}
+                          >
+                            <span
+                              className="w-1.5 h-1.5 rounded-full shrink-0"
+                              style={{ backgroundColor: themeColor }}
+                            />
+                            <span>{domain}</span>
+                          </span>
+                          {course && (
+                            <span className="text-[11px] text-neutral-600 dark:text-neutral-400 font-medium truncate max-w-[160px]" title={course}>
+                              {course}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Contact */}
@@ -238,8 +296,14 @@ export function StudentsPage() {
                       </td>
 
                       {/* Total Mentor Hours */}
-                      <td className="py-3 px-4 font-mono font-bold text-center text-indigo-600 dark:text-indigo-400">
-                        {formattedHours}
+                      <td className="py-3 px-4 text-center whitespace-nowrap">
+                        <span
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 font-mono font-bold text-xs"
+                          title={`Total Mentor Hours: ${stats.formattedHours}`}
+                        >
+                          <Clock className="w-3 h-3 text-indigo-500" />
+                          <span>{stats.formattedHours}</span>
+                        </span>
                       </td>
 
                       {/* Status */}
@@ -298,6 +362,10 @@ export function StudentsPage() {
             totalItems={filteredStudents.length}
             pageSize={pageSize}
             onPageChange={setCurrentPage}
+            onPageSizeChange={(newSize) => {
+              setPageSize(newSize);
+              setCurrentPage(1);
+            }}
           />
         </div>
       ) : (

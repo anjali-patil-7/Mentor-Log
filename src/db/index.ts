@@ -1,6 +1,7 @@
 import Dexie, { Table } from 'dexie';
 import { Student, Session, Assignment, Track } from '../types';
 import { DEFAULT_TRACKS, INITIAL_STUDENTS, INITIAL_SESSIONS, INITIAL_ASSIGNMENTS } from '../utils/mockData';
+import { resolveDomainAndCourse } from '../utils/domainCourses';
 
 export class MentorLogDB extends Dexie {
   students!: Table<Student, string>;
@@ -61,6 +62,47 @@ export class MentorLogDB extends Dexie {
             }
           });
       });
+
+    // Version 3: Domain → Course structure
+    this.version(3)
+      .stores({
+        students: 'id, &studentId, studentName, domain, course, status, createdAt',
+        sessions: 'id, studentId, studentName, domain, course, trackId, date, sessionStatus, attendance, createdAt',
+        assignments: 'id, studentId, sessionId, domain, course, status, trackId, dueDate, createdAt',
+        tracks: 'id, name, domain',
+        settings: 'key',
+      })
+      .upgrade(async (tx) => {
+        // Upgrade students with domain + course
+        await tx
+          .table('students')
+          .toCollection()
+          .modify((student: any) => {
+            const resolved = resolveDomainAndCourse(student.domain, student.course);
+            student.domain = resolved.domain;
+            student.course = resolved.course;
+          });
+
+        // Upgrade sessions with domain + course
+        await tx
+          .table('sessions')
+          .toCollection()
+          .modify((session: any) => {
+            const resolved = resolveDomainAndCourse(session.domain, session.course, session.trackId);
+            session.domain = resolved.domain;
+            session.course = resolved.course;
+          });
+
+        // Upgrade assignments with domain + course
+        await tx
+          .table('assignments')
+          .toCollection()
+          .modify((assignment: any) => {
+            const resolved = resolveDomainAndCourse(assignment.domain, assignment.course, assignment.trackId);
+            assignment.domain = resolved.domain;
+            assignment.course = resolved.course;
+          });
+      });
   }
 }
 
@@ -72,18 +114,47 @@ export const db = new MentorLogDB();
 export async function initAndMigrateDatabase() {
   try {
     const isSeeded = await db.settings.get('googleSheetSeeded_v2');
-    if (isSeeded && isSeeded.value) {
+    if (!isSeeded || !isSeeded.value) {
+      await seedDatabase(true);
       return;
     }
 
-    await seedDatabase(true);
-  } catch (err) {
-    console.warn('Database initialization error encountered. Retrying clean seed with real data...', err);
-    try {
-      await seedDatabase(true);
-    } catch (retryErr) {
-      console.error('Fatal database seed error:', retryErr);
+    // Ensure all canonical tracks exist
+    const currentTracks = await db.tracks.toArray();
+    const existingTrackIds = new Set(currentTracks.map((t) => t.id));
+    const missingTracks = DEFAULT_TRACKS.filter((t) => !existingTrackIds.has(t.id));
+    if (missingTracks.length > 0) {
+      await db.tracks.bulkPut(missingTracks);
     }
+
+    // Check if domain-course migration was applied
+    const domainMigrated = await db.settings.get('domainCourseMigration_v1');
+    if (!domainMigrated) {
+      await db.transaction('rw', [db.students, db.sessions, db.assignments, db.tracks, db.settings], async () => {
+        await db.students.toCollection().modify((student: any) => {
+          const resolved = resolveDomainAndCourse(student.domain, student.course);
+          student.domain = resolved.domain;
+          student.course = resolved.course;
+        });
+
+        await db.sessions.toCollection().modify((session: any) => {
+          const resolved = resolveDomainAndCourse(session.domain, session.course, session.trackId);
+          session.domain = resolved.domain;
+          session.course = resolved.course;
+        });
+
+        await db.assignments.toCollection().modify((assignment: any) => {
+          const resolved = resolveDomainAndCourse(assignment.domain, assignment.course, assignment.trackId);
+          assignment.domain = resolved.domain;
+          assignment.course = resolved.course;
+        });
+
+        await db.tracks.bulkPut(DEFAULT_TRACKS);
+        await db.settings.put({ key: 'domainCourseMigration_v1', value: true });
+      });
+    }
+  } catch (err) {
+    console.warn('Database initialization error encountered:', err);
   }
 }
 

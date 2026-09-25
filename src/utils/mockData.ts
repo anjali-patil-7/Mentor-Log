@@ -1,12 +1,14 @@
 import { Track, Student, Session, Assignment } from '../types';
+import { DOMAIN_COURSES, DOMAIN_THEMES, DomainType } from './domainCourses';
 
-export const DEFAULT_TRACKS: Track[] = [
-  {
-    id: 'track-full-stack',
-    name: 'Full Stack Development',
-    color: '#4F46E5',
-  },
-];
+export const DEFAULT_TRACKS: Track[] = (Object.keys(DOMAIN_COURSES) as DomainType[]).flatMap((domain) =>
+  DOMAIN_COURSES[domain].map((course) => ({
+    id: course === 'Full Stack Software Development' ? 'track-full-stack' : `course-${course.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    name: course,
+    domain,
+    color: DOMAIN_THEMES[domain].primary,
+  }))
+);
 
 export const TRACK_COLOR_PALETTE = [
   { name: 'Indigo', hex: '#4F46E5' },

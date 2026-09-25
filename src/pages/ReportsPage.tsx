@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FileSpreadsheet,
   FileText,
@@ -8,6 +8,9 @@ import {
   Filter,
   Check,
   Search,
+  Eye,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { useStudents, useSessions, useTracks, useFilteredSessions } from '../db/hooks';
 import { useAppDispatch, useAppSelector } from '../store';
@@ -18,10 +21,11 @@ import {
   exportStudentPdfReport,
   exportStudentsToExcel,
   exportStudentsToCsv,
-
-} 
-from '../utils/export';
+} from '../utils/export';
+import { formatDateDisplay } from '../utils/dateTime';
 import { useToast } from '../components/Toast';
+import { Pagination } from '../components/Pagination';
+import { resolveDomainAndCourse } from '../utils/domainCourses';
 
 export function ReportsPage() {
   const dispatch = useAppDispatch();
@@ -35,6 +39,21 @@ export function ReportsPage() {
   const { filteredSessions } = useFilteredSessions(filters);
   const [individualStudentId, setIndividualStudentId] = useState(students[0]?.studentId || '');
   const [studentSearch, setStudentSearch] = useState('');
+  const [studentPage, setStudentPage] = useState(1);
+  const [studentPageSize, setStudentPageSize] = useState(9);
+
+  // Preview table state
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewPage, setPreviewPage] = useState(1);
+  const [previewPageSize, setPreviewPageSize] = useState(10);
+
+  useEffect(() => {
+    setStudentPage(1);
+  }, [studentSearch]);
+
+  useEffect(() => {
+    setPreviewPage(1);
+  }, [filters]);
 
   const individualStudent = students.find((s) => s.studentId === individualStudentId) || students[0] || null;
   const individualSessions = sessions.filter(
@@ -156,26 +175,38 @@ export function ReportsPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+          <div className="space-y-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleExportFiltered('pdf')}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors"
+              >
+                <FileText className="w-4 h-4" />
+                <span>PDF Report</span>
+              </button>
+              <button
+                onClick={() => handleExportFiltered('xlsx')}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                <span>Excel (.xlsx)</span>
+              </button>
+              <button
+                onClick={() => handleExportFiltered('csv')}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
+              >
+                <span>CSV</span>
+              </button>
+            </div>
+
             <button
-              onClick={() => handleExportFiltered('pdf')}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors"
+              type="button"
+              onClick={() => setShowPreview(!showPreview)}
+              className="w-full inline-flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg transition-colors"
             >
-              <FileText className="w-4 h-4" />
-              <span>PDF Report</span>
-            </button>
-            <button
-              onClick={() => handleExportFiltered('xlsx')}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-              <span>Excel (.xlsx)</span>
-            </button>
-            <button
-              onClick={() => handleExportFiltered('csv')}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
-            >
-              <span>CSV</span>
+              <Eye className="w-3.5 h-3.5" />
+              <span>{showPreview ? 'Hide Preview Table' : `Preview Table (${filteredSessions.length} sessions)`}</span>
+              {showPreview ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
             </button>
           </div>
         </div>
@@ -280,43 +311,75 @@ export function ReportsPage() {
 
         {/* Student Selector List */}
         <div className="space-y-2">
-          <div className="relative max-w-sm">
-            <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={studentSearch}
-              onChange={(e) => setStudentSearch(e.target.value)}
-              placeholder="Search students to select..."
-              className="w-full pl-8 pr-3 py-1 text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-900 dark:text-white"
-            />
+          <div className="flex items-center justify-between gap-3">
+            <div className="relative max-w-sm flex-1">
+              <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={studentSearch}
+                onChange={(e) => setStudentSearch(e.target.value)}
+                placeholder="Search students to select..."
+                className="w-full pl-8 pr-3 py-1 text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-900 dark:text-white"
+              />
+            </div>
+            <span className="text-[11px] text-neutral-500 whitespace-nowrap">
+              {filteredStudentList.length} students found
+            </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto custom-scrollbar p-1">
-            {filteredStudentList.map((s) => {
-              const isChecked = selectedStudentIds.includes(s.studentId);
-              return (
-                <label
-                  key={s.id}
-                  className={`flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer text-xs font-medium transition-colors ${
-                    isChecked
-                      ? 'bg-indigo-50/70 dark:bg-indigo-950/50 border-indigo-300 dark:border-indigo-700 text-indigo-900 dark:text-indigo-200'
-                      : 'bg-neutral-50 dark:bg-neutral-800/40 border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 hover:border-neutral-300'
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    onChange={() => dispatch(toggleSelectStudent(s.studentId))}
-                    className="rounded text-indigo-600 focus:ring-indigo-500"
-                  />
-                  <div className="truncate">
-                    <span className="font-bold">{s.studentName}</span>
-                    <span className="text-[10px] text-neutral-400 block">{s.studentId} • {s.domain}</span>
-                  </div>
-                </label>
-              );
-            })}
-          </div>
+          {(() => {
+            const totalStudentPages = Math.ceil(filteredStudentList.length / studentPageSize);
+            const paginatedStudentList = filteredStudentList.slice(
+              (studentPage - 1) * studentPageSize,
+              studentPage * studentPageSize
+            );
+
+            return (
+              <div className="space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 p-1">
+                  {paginatedStudentList.map((s) => {
+                    const isChecked = selectedStudentIds.includes(s.studentId);
+                    return (
+                      <label
+                        key={s.id}
+                        className={`flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer text-xs font-medium transition-colors ${
+                          isChecked
+                            ? 'bg-indigo-50/70 dark:bg-indigo-950/50 border-indigo-300 dark:border-indigo-700 text-indigo-900 dark:text-indigo-200'
+                            : 'bg-neutral-50 dark:bg-neutral-800/40 border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 hover:border-neutral-300'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => dispatch(toggleSelectStudent(s.studentId))}
+                          className="rounded text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <div className="truncate">
+                          <span className="font-bold">{s.studentName}</span>
+                          {(() => {
+                            const { domain: dom, course: crs } = resolveDomainAndCourse(s.domain, s.course);
+                            return (
+                              <span className="text-[10px] text-neutral-400 block truncate">
+                                {s.studentId} • {dom}{crs ? ` • ${crs}` : ''}
+                              </span>
+                            );
+                          })()}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <Pagination
+                  currentPage={studentPage}
+                  totalPages={totalStudentPages}
+                  totalItems={filteredStudentList.length}
+                  pageSize={studentPageSize}
+                  onPageChange={setStudentPage}
+                />
+              </div>
+            );
+          })()}
         </div>
       </div>
 
@@ -347,6 +410,122 @@ export function ReportsPage() {
           </button>
         </div>
       </div>
+
+      {/* Preview Table for Filtered Sessions */}
+      {showPreview && (
+        <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl p-5 shadow-2xs space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-bold text-neutral-900 dark:text-white font-heading">
+                Preview Filtered Sessions ({filteredSessions.length} records)
+              </h3>
+              <p className="text-xs text-neutral-500">
+                Live preview of records that will be included in the exported report
+              </p>
+            </div>
+
+            <button
+              onClick={() => setShowPreview(false)}
+              className="text-xs text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+            >
+              Hide Preview
+            </button>
+          </div>
+
+          {filteredSessions.length > 0 ? (
+            <div className="border border-neutral-100 dark:border-neutral-800 rounded-lg overflow-hidden">
+              <div className="overflow-x-auto custom-scrollbar">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-800/50 font-semibold text-neutral-500">
+                      <th className="py-2.5 px-3">Date</th>
+                      <th className="py-2.5 px-3">Student</th>
+                      <th className="py-2.5 px-3">Domain & Course</th>
+                      <th className="py-2.5 px-3">Duration</th>
+                      <th className="py-2.5 px-3">Status</th>
+                      <th className="py-2.5 px-3">Attendance</th>
+                      <th className="py-2.5 px-3 min-w-[200px]">Topics Covered</th>
+                      <th className="py-2.5 px-3 whitespace-nowrap">Recording</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                    {filteredSessions
+                      .slice((previewPage - 1) * previewPageSize, previewPage * previewPageSize)
+                      .map((s) => {
+                        const recUrl =
+                          s.recordingClassLink ||
+                          s.sessionResources?.find((r) => r.type === 'Recording')?.url ||
+                          '';
+                        const { domain: pDom, course: pCourse } = resolveDomainAndCourse(s.domain, s.course, s.trackId);
+
+                        return (
+                          <tr key={s.id} className="hover:bg-neutral-50/60 dark:hover:bg-neutral-800/40">
+                            <td className="py-2.5 px-3 whitespace-nowrap font-medium text-neutral-900 dark:text-white">
+                              {formatDateDisplay(s.date)}
+                            </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap font-semibold">
+                              {s.studentName}
+                            </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              <div className="flex flex-col gap-0.5">
+                                <span className="font-semibold text-neutral-800 dark:text-neutral-200">{pDom}</span>
+                                {pCourse && <span className="text-[11px] text-neutral-500">{pCourse}</span>}
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap font-mono text-neutral-600 dark:text-neutral-400">
+                              {s.durationText}
+                            </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              <span className="font-semibold px-2 py-0.5 rounded-full text-[11px] bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300">
+                                {s.sessionStatus || s.classStatus || 'Completed'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap text-neutral-700 dark:text-neutral-300">
+                              {s.attendance || 'Present'}
+                            </td>
+                            <td className="py-2.5 px-3 text-neutral-800 dark:text-neutral-200 max-w-xs truncate">
+                              {s.topicsTaught || '—'}
+                            </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              {recUrl ? (
+                                <a
+                                  href={recUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold"
+                                >
+                                  Open
+                                </a>
+                              ) : (
+                                <span className="text-neutral-400 italic">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+
+              <Pagination
+                currentPage={previewPage}
+                totalPages={Math.ceil(filteredSessions.length / previewPageSize)}
+                totalItems={filteredSessions.length}
+                pageSize={previewPageSize}
+                onPageChange={setPreviewPage}
+                onPageSizeChange={(newSize) => {
+                  setPreviewPageSize(newSize);
+                  setPreviewPage(1);
+                }}
+              />
+            </div>
+          ) : (
+            <div className="py-6 text-center text-xs text-neutral-400 italic">
+              No sessions match the current filters.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

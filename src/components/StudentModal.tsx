@@ -4,8 +4,9 @@ import { X, UserPlus, AlertCircle } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../store';
 import { closeAddStudentModal } from '../store/uiSlice';
 import { addStudentDB, updateStudentDB } from '../db/operations';
-import { useStudents, useTracks, useStudentById } from '../db/hooks';
+import { useStudents, useStudentById } from '../db/hooks';
 import { Student } from '../types';
+import { DOMAIN_OPTIONS, DOMAIN_COURSES, DomainType, resolveDomainAndCourse } from '../utils/domainCourses';
 import { useToast } from './Toast';
 
 export function StudentModal() {
@@ -13,14 +14,14 @@ export function StudentModal() {
   const isOpen = useAppSelector((state) => state.ui.isAddStudentModalOpen);
   const editingStudentId = useAppSelector((state) => state.ui.editingStudentId);
   const existingStudents = useStudents();
-  const tracks = useTracks();
   const editingStudent = useStudentById(editingStudentId || '');
   const { showToast } = useToast();
 
   const [studentName, setStudentName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [domain, setDomain] = useState('');
+  const [domain, setDomain] = useState<DomainType>('Tech / IT');
+  const [course, setCourse] = useState<string>('Full Stack Software Development');
   const [batch, setBatch] = useState('2026-B1');
   const [joiningDate, setJoiningDate] = useState(new Date().toISOString().slice(0, 10));
   const [status, setStatus] = useState<'Active' | 'Inactive' | 'Completed'>('Active');
@@ -34,7 +35,9 @@ export function StudentModal() {
       setStudentName(editingStudent.studentName);
       setEmail(editingStudent.email || '');
       setPhone(editingStudent.phone || '');
-      setDomain(editingStudent.domain || (tracks[0]?.name || 'Full Stack'));
+      const resolved = resolveDomainAndCourse(editingStudent.domain, editingStudent.course);
+      setDomain(resolved.domain);
+      setCourse(resolved.course);
       setBatch(editingStudent.batch || '2026-B1');
       setJoiningDate(editingStudent.joiningDate || new Date().toISOString().slice(0, 10));
       setStatus(editingStudent.status || 'Active');
@@ -43,22 +46,32 @@ export function StudentModal() {
       setStudentName('');
       setEmail('');
       setPhone('');
-      setDomain(tracks[0]?.name || 'Full Stack');
+      setDomain('Tech / IT');
+      setCourse('Full Stack Software Development');
       setBatch('2026-B1');
       setJoiningDate(new Date().toISOString().slice(0, 10));
       setStatus('Active');
       setNotes('');
     }
     setErrors({});
-  }, [isOpen, editingStudent, tracks]);
+  }, [isOpen, editingStudent]);
+
+  const handleDomainChange = (newDomain: DomainType) => {
+    setDomain(newDomain);
+    const availableCourses = DOMAIN_COURSES[newDomain] || [];
+    setCourse(availableCourses[0] || '');
+  };
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
     if (!studentName.trim()) {
       newErrors.studentName = 'Student name is required';
     }
-    if (!domain.trim()) {
-      newErrors.domain = 'Track / Domain is required';
+    if (!domain) {
+      newErrors.domain = 'Domain is required';
+    }
+    if (!course) {
+      newErrors.course = 'Course is required';
     }
     if (email.trim() && !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
       newErrors.email = 'Please enter a valid email address';
@@ -86,7 +99,8 @@ export function StudentModal() {
           studentName: studentName.trim(),
           email: email.trim(),
           phone: phone.trim(),
-          domain: domain.trim(),
+          domain,
+          course,
           batch: batch.trim(),
           joiningDate,
           status,
@@ -100,7 +114,8 @@ export function StudentModal() {
           studentName: studentName.trim(),
           email: email.trim(),
           phone: phone.trim(),
-          domain: domain.trim(),
+          domain,
+          course,
           batch: batch.trim(),
           joiningDate,
           status,
@@ -220,42 +235,67 @@ export function StudentModal() {
               </div>
             </div>
 
-            {/* Domain & Batch */}
+            {/* Domain & Course (Parent -> Child) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label htmlFor="modal-student-domain" className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
-                  Domain / Track <span className="text-rose-500">*</span>
+                  Domain (Parent) <span className="text-rose-500">*</span>
                 </label>
                 <select
                   id="modal-student-domain"
                   value={domain}
-                  onChange={(e) => setDomain(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  onChange={(e) => handleDomainChange(e.target.value as DomainType)}
+                  className="w-full px-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
                 >
-                  {tracks.map((t) => (
-                    <option key={t.id} value={t.name}>
-                      {t.name}
+                  {DOMAIN_OPTIONS.map((dom) => (
+                    <option key={dom} value={dom}>
+                      {dom}
                     </option>
                   ))}
-                  <option value="AI / Machine Learning">AI / Machine Learning</option>
-                  <option value="Cybersecurity">Cybersecurity</option>
-                  <option value="Data Engineering">Data Engineering</option>
                 </select>
+                {errors.domain && (
+                  <p className="text-xs text-rose-500 mt-1">{errors.domain}</p>
+                )}
               </div>
 
               <div>
-                <label htmlFor="modal-student-batch" className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
-                  Batch
+                <label htmlFor="modal-student-course" className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
+                  Course (Child) <span className="text-rose-500">*</span>
                 </label>
-                <input
-                  id="modal-student-batch"
-                  type="text"
-                  value={batch}
-                  onChange={(e) => setBatch(e.target.value)}
-                  placeholder="2026-B1"
-                  className="w-full px-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-900 dark:text-white placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                />
+                <select
+                  id="modal-student-course"
+                  value={course}
+                  onChange={(e) => {
+                    setCourse(e.target.value);
+                    if (errors.course) setErrors((prev) => ({ ...prev, course: '' }));
+                  }}
+                  className="w-full px-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
+                >
+                  {(DOMAIN_COURSES[domain] || []).map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+                {errors.course && (
+                  <p className="text-xs text-rose-500 mt-1">{errors.course}</p>
+                )}
               </div>
+            </div>
+
+            {/* Batch */}
+            <div>
+              <label htmlFor="modal-student-batch" className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
+                Batch
+              </label>
+              <input
+                id="modal-student-batch"
+                type="text"
+                value={batch}
+                onChange={(e) => setBatch(e.target.value)}
+                placeholder="2026-B1"
+                className="w-full px-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-900 dark:text-white placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
             </div>
 
             {/* Joining Date & Status */}

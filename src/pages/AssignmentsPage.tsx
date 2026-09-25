@@ -19,6 +19,7 @@ import { formatDateDisplay } from '../utils/dateTime';
 import { AssignmentStatus } from '../types';
 import { useToast } from '../components/Toast';
 import { Pagination } from '../components/Pagination';
+import { DOMAIN_OPTIONS, DOMAIN_COURSES, ALL_COURSES, DomainType, resolveDomainAndCourse, DOMAIN_THEMES } from '../utils/domainCourses';
 
 export function AssignmentsPage() {
   const dispatch = useAppDispatch();
@@ -30,29 +31,39 @@ export function AssignmentsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStudent, setSelectedStudent] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
-  const [selectedTrack, setSelectedTrack] = useState('all');
+  const [selectedDomain, setSelectedDomain] = useState('all');
+  const [selectedCourse, setSelectedCourse] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(10);
 
   // Reset pagination to page 1 when search or any filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedStudent, selectedStatus, selectedTrack]);
+  }, [searchQuery, selectedStudent, selectedStatus, selectedDomain, selectedCourse]);
 
-  const trackMap = new Map(tracks.map((t) => [t.id, t]));
   const query = searchQuery.trim().toLowerCase();
 
+  const availableCourses =
+    selectedDomain !== 'all' && DOMAIN_COURSES[selectedDomain as DomainType]
+      ? DOMAIN_COURSES[selectedDomain as DomainType]
+      : ALL_COURSES;
+
   const filteredAssignments = assignments.filter((a) => {
+    const { domain, course } = resolveDomainAndCourse(a.domain, a.course, a.trackId);
+
     if (query) {
       const taskMatch = a.taskTitle.toLowerCase().includes(query);
       const studentMatch = (a.studentName || '').toLowerCase().includes(query);
       const notesMatch = (a.notes || '').toLowerCase().includes(query);
-      if (!taskMatch && !studentMatch && !notesMatch) return false;
+      const domainMatch = domain.toLowerCase().includes(query);
+      const courseMatch = course.toLowerCase().includes(query);
+      if (!taskMatch && !studentMatch && !notesMatch && !domainMatch && !courseMatch) return false;
     }
 
     if (selectedStudent !== 'all' && a.studentId !== selectedStudent) return false;
     if (selectedStatus !== 'all' && a.status !== selectedStatus) return false;
-    if (selectedTrack !== 'all' && a.trackId !== selectedTrack) return false;
+    if (selectedDomain !== 'all' && domain !== selectedDomain) return false;
+    if (selectedCourse !== 'all' && course !== selectedCourse) return false;
 
     return true;
   });
@@ -145,14 +156,34 @@ export function AssignmentsPage() {
           </select>
 
           <select
-            value={selectedTrack}
-            onChange={(e) => setSelectedTrack(e.target.value)}
+            value={selectedDomain}
+            onChange={(e) => {
+              setSelectedDomain(e.target.value);
+              setSelectedCourse('all');
+            }}
+            aria-label="Filter by domain"
             className="px-2.5 py-1.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-800 dark:text-neutral-200"
           >
-            <option value="all">All Tracks</option>
-            {tracks.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
+            <option value="all">All Domains</option>
+            {DOMAIN_OPTIONS.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={selectedCourse}
+            onChange={(e) => setSelectedCourse(e.target.value)}
+            aria-label="Filter by course"
+            className="px-2.5 py-1.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-800 dark:text-neutral-200 max-w-[170px] truncate"
+          >
+            <option value="all">
+              {selectedDomain !== 'all' ? `All ${selectedDomain} Courses` : 'All Courses'}
+            </option>
+            {availableCourses.map((c) => (
+              <option key={c} value={c}>
+                {c}
               </option>
             ))}
           </select>
@@ -172,7 +203,7 @@ export function AssignmentsPage() {
                 <tr className="border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-800/50 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
                   <th className="py-3 px-4">Student</th>
                   <th className="py-3 px-4 min-w-[220px]">Task / Assignment Title</th>
-                  <th className="py-3 px-4">Track</th>
+                  <th className="py-3 px-4">Domain & Course</th>
                   <th className="py-3 px-4">Assigned Date</th>
                   <th className="py-3 px-4">Due Date</th>
                   <th className="py-3 px-4">Status</th>
@@ -181,7 +212,8 @@ export function AssignmentsPage() {
               </thead>
               <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800 text-xs sm:text-sm">
                 {paginatedAssignments.map((assignment) => {
-                  const trackObj = trackMap.get(assignment.trackId);
+                  const { domain, course } = resolveDomainAndCourse(assignment.domain, assignment.course, assignment.trackId);
+                  const themeColor = DOMAIN_THEMES[domain]?.primary || '#4F46E5';
 
                   return (
                     <tr key={assignment.id} className="hover:bg-neutral-50/80 dark:hover:bg-neutral-800/40 transition-colors">
@@ -199,16 +231,27 @@ export function AssignmentsPage() {
                       </td>
 
                       <td className="py-3 px-4 whitespace-nowrap">
-                        <span
-                          className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border"
-                          style={{
-                            backgroundColor: `${trackObj?.color || '#64748B'}15`,
-                            borderColor: `${trackObj?.color || '#64748B'}35`,
-                            color: trackObj?.color || '#64748B',
-                          }}
-                        >
-                          {trackObj?.name || assignment.trackId}
-                        </span>
+                        <div className="flex flex-col gap-0.5 items-start">
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border"
+                            style={{
+                              backgroundColor: `${themeColor}15`,
+                              borderColor: `${themeColor}35`,
+                              color: themeColor,
+                            }}
+                          >
+                            <span
+                              className="w-1.5 h-1.5 rounded-full shrink-0"
+                              style={{ backgroundColor: themeColor }}
+                            />
+                            <span>{domain}</span>
+                          </span>
+                          {course && (
+                            <span className="text-[11px] text-neutral-600 dark:text-neutral-400 font-medium truncate max-w-[160px]" title={course}>
+                              {course}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="py-3 px-4 whitespace-nowrap text-neutral-600 dark:text-neutral-400">
@@ -282,6 +325,10 @@ export function AssignmentsPage() {
             totalItems={filteredAssignments.length}
             pageSize={pageSize}
             onPageChange={setCurrentPage}
+            onPageSizeChange={(newSize) => {
+              setPageSize(newSize);
+              setCurrentPage(1);
+            }}
           />
         </div>
       ) : (

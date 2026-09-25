@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X,
@@ -18,6 +18,9 @@ import {
   Video,
   Award,
   ListTodo,
+  Copy,
+  Check,
+  Plus,
 } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../store';
 import { setViewingSessionId, openEditPanel, setDeletingSessionId } from '../store/uiSlice';
@@ -25,6 +28,8 @@ import { useSessions, useTracks, useStudents } from '../db/hooks';
 import { duplicateSessionDB } from '../db/operations';
 import { formatDateDisplay, formatTimeDisplay } from '../utils/dateTime';
 import { useToast } from './Toast';
+import { RecordingLinkModal } from './RecordingLinkModal';
+import { resolveDomainAndCourse, DOMAIN_THEMES } from '../utils/domainCourses';
 
 export function SessionDetailsModal() {
   const dispatch = useAppDispatch();
@@ -33,6 +38,8 @@ export function SessionDetailsModal() {
   const tracks = useTracks();
   const students = useStudents();
   const { showToast } = useToast();
+  const [isRecordingModalOpen, setIsRecordingModalOpen] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   if (!viewingSessionId) return null;
 
@@ -41,7 +48,8 @@ export function SessionDetailsModal() {
 
   const track = tracks.find((t) => t.id === session.trackId);
   const student = students.find((st) => st.studentId === session.studentId);
-  const domainName = track?.name || student?.domain || 'General';
+  const { domain, course } = resolveDomainAndCourse(session.domain, session.course, session.trackId || student?.domain);
+  const themeColor = DOMAIN_THEMES[domain]?.primary || track?.color || '#4F46E5';
 
   const handleClose = () => {
     dispatch(setViewingSessionId(null));
@@ -142,18 +150,23 @@ export function SessionDetailsModal() {
                 <span className="text-[11px] text-neutral-500">ID: {session.studentId}</span>
               </div>
 
-              {/* Domain */}
+              {/* Domain & Course */}
               <div className="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200/80 dark:border-neutral-800">
                 <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider block mb-1">
-                  Domain / Track
+                  Domain & Course
                 </span>
                 <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-neutral-900 dark:text-white">
                   <span
-                    className="w-2.5 h-2.5 rounded-full"
-                    style={{ backgroundColor: track?.color || '#6366F1' }}
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: themeColor }}
                   />
-                  <span>{domainName}</span>
+                  <span>{domain}</span>
                 </span>
+                {course && (
+                  <span className="text-[11px] text-neutral-500 dark:text-neutral-400 block mt-0.5 truncate" title={course}>
+                    {course}
+                  </span>
+                )}
               </div>
 
               {/* Status */}
@@ -242,36 +255,123 @@ export function SessionDetailsModal() {
               </div>
             </div>
 
-            {/* Resources & Links */}
-            {resources.length > 0 && (
-              <div className="space-y-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-500 flex items-center gap-1.5">
-                  <Video className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                  Session Resources ({resources.length})
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {resources.map((res) => (
-                    <a
-                      key={res.id}
-                      href={res.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-800 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors flex items-center justify-between group"
-                    >
-                      <div className="min-w-0 pr-2">
-                        <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block">
-                          {res.type || 'Resource'}
-                        </span>
-                        <span className="text-xs font-semibold text-neutral-900 dark:text-white truncate block">
-                          {res.title || res.url}
-                        </span>
+            {/* Session Recording Link */}
+            {(() => {
+              const recordingUrl =
+                session.recordingClassLink?.trim() ||
+                session.sessionResources?.find((r) => r.type === 'Recording')?.url?.trim() ||
+                '';
+
+              const otherResources = (session.sessionResources || []).filter(
+                (r) => r.url && r.url !== recordingUrl
+              );
+
+              const handleCopyRecording = () => {
+                if (!recordingUrl) return;
+                navigator.clipboard.writeText(recordingUrl);
+                setCopiedLink(true);
+                showToast('Recording link copied to clipboard', 'info');
+                setTimeout(() => setCopiedLink(false), 2000);
+              };
+
+              return (
+                <div className="space-y-3">
+                  <div className="p-4 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <Video className="w-5 h-5" />
                       </div>
-                      <ExternalLink className="w-4 h-4 text-neutral-400 group-hover:text-indigo-600 shrink-0 transition-colors" />
-                    </a>
-                  ))}
+                      <div className="min-w-0">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 block">
+                          Session Recording
+                        </span>
+                        {recordingUrl ? (
+                          <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300 font-mono truncate block max-w-sm">
+                            {recordingUrl}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-neutral-400 italic block">
+                            No recording link attached yet
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {recordingUrl ? (
+                        <>
+                          <a
+                            href={recordingUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-2xs transition-colors"
+                          >
+                            <Video className="w-3.5 h-3.5" />
+                            <span>Open Recording</span>
+                            <ExternalLink className="w-3 h-3 ml-0.5" />
+                          </a>
+
+                          <button
+                            type="button"
+                            onClick={handleCopyRecording}
+                            className="p-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+                            title="Copy recording URL"
+                          >
+                            {copiedLink ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setIsRecordingModalOpen(true)}
+                            className="p-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+                            title="Edit recording URL"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setIsRecordingModalOpen(true)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-2xs transition-colors"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add Recording Link</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Other Resources */}
+                  {otherResources.length > 0 && (
+                    <div className="space-y-1.5 pt-1">
+                      <h4 className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+                        Additional Resources ({otherResources.length})
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {otherResources.map((res) => (
+                          <a
+                            key={res.id}
+                            href={res.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-800 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors flex items-center justify-between text-xs group"
+                          >
+                            <div className="truncate pr-2">
+                              <span className="font-semibold text-neutral-900 dark:text-white block truncate">
+                                {res.title || res.url}
+                              </span>
+                              <span className="text-[10px] text-neutral-400 block">{res.type}</span>
+                            </div>
+                            <ExternalLink className="w-3.5 h-3.5 text-neutral-400 group-hover:text-indigo-600 shrink-0" />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Remarks / Notes */}
             {session.remarks && (
@@ -334,6 +434,13 @@ export function SessionDetailsModal() {
             </button>
           </div>
         </motion.div>
+
+        {/* Recording Link Modal */}
+        <RecordingLinkModal
+          isOpen={isRecordingModalOpen}
+          onClose={() => setIsRecordingModalOpen(false)}
+          session={session}
+        />
       </div>
     </AnimatePresence>
   );

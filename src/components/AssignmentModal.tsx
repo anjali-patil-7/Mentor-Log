@@ -7,6 +7,7 @@ import { addAssignmentDB, updateAssignmentDB } from '../db/operations';
 import { useStudents, useTracks, useAssignments } from '../db/hooks';
 import { Assignment, AssignmentStatus } from '../types';
 import { useToast } from './Toast';
+import { DOMAIN_OPTIONS, DOMAIN_COURSES, DomainType, resolveDomainAndCourse } from '../utils/domainCourses';
 
 export function AssignmentModal() {
   const dispatch = useAppDispatch();
@@ -21,6 +22,8 @@ export function AssignmentModal() {
 
   const [studentId, setStudentId] = useState('');
   const [taskTitle, setTaskTitle] = useState('');
+  const [domain, setDomain] = useState<DomainType>('Tech / IT');
+  const [course, setCourse] = useState<string>('Full Stack Software Development');
   const [trackId, setTrackId] = useState('');
   const [assignedDate, setAssignedDate] = useState(new Date().toISOString().slice(0, 10));
   const [dueDate, setDueDate] = useState(new Date().toISOString().slice(0, 10));
@@ -34,15 +37,22 @@ export function AssignmentModal() {
     if (editingAssignment) {
       setStudentId(editingAssignment.studentId);
       setTaskTitle(editingAssignment.taskTitle);
-      setTrackId(editingAssignment.trackId);
+      const resolved = resolveDomainAndCourse(editingAssignment.domain, editingAssignment.course, editingAssignment.trackId);
+      setDomain(resolved.domain);
+      setCourse(resolved.course);
+      setTrackId(resolved.course || editingAssignment.trackId);
       setAssignedDate(editingAssignment.assignedDate);
       setDueDate(editingAssignment.dueDate);
       setStatus(editingAssignment.status);
       setNotes(editingAssignment.notes || '');
     } else {
-      setStudentId(students[0]?.studentId || '');
+      const firstStu = students[0];
+      setStudentId(firstStu?.studentId || '');
       setTaskTitle('');
-      setTrackId(tracks[0]?.id || '');
+      const resolved = resolveDomainAndCourse(firstStu?.domain, firstStu?.course);
+      setDomain(resolved.domain);
+      setCourse(resolved.course);
+      setTrackId(resolved.course || tracks[0]?.id || '');
       setAssignedDate(new Date().toISOString().slice(0, 10));
       setDueDate(new Date().toISOString().slice(0, 10));
       setStatus('Assigned');
@@ -50,6 +60,24 @@ export function AssignmentModal() {
     }
     setError('');
   }, [isOpen, editingAssignment, students, tracks]);
+
+  const handleStudentSelect = (selectedId: string) => {
+    setStudentId(selectedId);
+    const stu = students.find((s) => s.studentId === selectedId);
+    if (stu) {
+      const resolved = resolveDomainAndCourse(stu.domain, stu.course);
+      setDomain(resolved.domain);
+      setCourse(resolved.course);
+      setTrackId(resolved.course);
+    }
+  };
+
+  const handleDomainChange = (newDomain: DomainType) => {
+    setDomain(newDomain);
+    const firstCourse = DOMAIN_COURSES[newDomain][0] || '';
+    setCourse(firstCourse);
+    setTrackId(firstCourse);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,7 +100,9 @@ export function AssignmentModal() {
           studentId,
           studentName,
           taskTitle: taskTitle.trim(),
-          trackId,
+          domain,
+          course,
+          trackId: course || trackId,
           assignedDate,
           dueDate,
           status,
@@ -85,7 +115,9 @@ export function AssignmentModal() {
           studentId,
           studentName,
           taskTitle: taskTitle.trim(),
-          trackId: trackId || tracks[0]?.id || 'track-full-stack',
+          domain,
+          course,
+          trackId: course || trackId || 'Full Stack Software Development',
           assignedDate,
           dueDate,
           status,
@@ -148,7 +180,7 @@ export function AssignmentModal() {
               <select
                 id="assignment-student-select"
                 value={studentId}
-                onChange={(e) => setStudentId(e.target.value)}
+                onChange={(e) => handleStudentSelect(e.target.value)}
                 className="w-full px-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
               >
                 {students.map((s) => (
@@ -183,29 +215,50 @@ export function AssignmentModal() {
               )}
             </div>
 
-            {/* Track & Status */}
+            {/* Domain & Course (Parent -> Child) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label htmlFor="assignment-track-select" className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
-                  Track
+                <label htmlFor="assignment-domain-select" className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
+                  Domain (Parent) <span className="text-rose-500">*</span>
                 </label>
                 <select
-                  id="assignment-track-select"
-                  value={trackId}
-                  onChange={(e) => setTrackId(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  id="assignment-domain-select"
+                  value={domain}
+                  onChange={(e) => handleDomainChange(e.target.value as DomainType)}
+                  className="w-full px-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                 >
-                  {tracks.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
+                  {DOMAIN_OPTIONS.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div>
+                <label htmlFor="assignment-course-select" className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
+                  Course (Child) <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  id="assignment-course-select"
+                  value={course}
+                  onChange={(e) => setCourse(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                >
+                  {(DOMAIN_COURSES[domain] || []).map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Status & Dates */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
                 <label htmlFor="assignment-status-select" className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
-                  Assignment Status
+                  Status
                 </label>
                 <select
                   id="assignment-status-select"
@@ -222,10 +275,7 @@ export function AssignmentModal() {
                   <option value="Overdue">Overdue</option>
                 </select>
               </div>
-            </div>
 
-            {/* Dates */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label htmlFor="assignment-assigned-date" className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
                   Assigned Date

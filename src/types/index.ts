@@ -43,7 +43,8 @@ export interface Student {
   studentName: string;
   email: string;
   phone: string;
-  domain: string; // Domain (previously Track / Domain)
+  domain: string; // Parent Domain (Tech / IT, Management, Medical)
+  course?: string; // Child Course
   batch: string;
   joiningDate: string; // YYYY-MM-DD
   status: 'Active' | 'Inactive' | 'Completed';
@@ -64,7 +65,9 @@ export interface Session {
   id: string;
   studentId: string; // References Student.studentId
   studentName: string; // Resolved student name
-  trackId: string; // References Track.id (Domain)
+  domain?: string; // Parent Domain (Tech / IT, Management, Medical)
+  course?: string; // Child Course
+  trackId: string; // References Track.id / Course identifier
   date: string; // YYYY-MM-DD
   day: string; // Monday, Tuesday, etc. (auto-calculated)
   startTime: string; // HH:mm (24hr, e.g. 09:30)
@@ -95,6 +98,8 @@ export interface Assignment {
   studentName: string;
   sessionId?: string;
   taskTitle: string;
+  domain?: string;
+  course?: string;
   assignedDate: string;
   dueDate: string;
   status: AssignmentStatus;
@@ -107,6 +112,7 @@ export interface Assignment {
 export interface Track {
   id: string;
   name: string;
+  domain?: string;
   color: string;
   isCustom?: boolean;
 }
@@ -119,7 +125,9 @@ export type SortDirection = 'asc' | 'desc';
 export interface FilterState {
   searchQuery: string;
   studentId: string; // 'all' or specific studentId
-  trackId: string; // 'all' or specific trackId
+  domain: string; // 'all' or specific domain
+  course: string; // 'all' or specific course
+  trackId: string; // 'all' or specific trackId / course
   sessionStatus: 'all' | SessionStatus;
   attendance: 'all' | AttendanceStatus;
   assignmentStatus: 'all' | AssignmentStatus;

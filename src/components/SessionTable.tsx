@@ -156,7 +156,7 @@ export function SessionTable() {
                   className="py-3 px-4 cursor-pointer hover:bg-neutral-100/70 dark:hover:bg-neutral-800/70 transition-colors select-none group whitespace-nowrap"
                 >
                   <div className="flex items-center gap-1.5">
-                    <span>Track</span>
+                    <span>Domain & Course</span>
                     {renderSortIndicator('track')}
                   </div>
                 </th>

@@ -27,6 +27,7 @@ import {
 } from '../utils/dateTime';
 import { SessionStatus, AttendanceStatus, ProgressLevel, CancellationReason, Session, SessionResource } from '../types';
 import { useToast } from './Toast';
+import { DOMAIN_OPTIONS, DOMAIN_COURSES, DomainType, resolveDomainAndCourse } from '../utils/domainCourses';
 
 const DRAFT_STORAGE_KEY = 'mentor_log_session_draft_v2';
 
@@ -75,7 +76,9 @@ export function SessionSlideOver() {
   // Form states
   const [studentId, setStudentId] = useState('');
   const [studentName, setStudentName] = useState('');
-  const [trackId, setTrackId] = useState('');
+  const [domain, setDomain] = useState<DomainType>('Tech / IT');
+  const [course, setCourse] = useState<string>('Full Stack Software Development');
+  const [trackId, setTrackId] = useState('Full Stack Software Development');
   const [date, setDate] = useState(getTodayString());
   const [startTime, setStartTime] = useState('10:00');
   const [endTime, setEndTime] = useState('11:30');
@@ -87,6 +90,7 @@ export function SessionSlideOver() {
   const [cancellationReason, setCancellationReason] = useState<CancellationReason>('Student unavailable');
   const [customReason, setCustomReason] = useState('');
   const [progressLevel, setProgressLevel] = useState<ProgressLevel>('Good');
+  const [recordingLink, setRecordingLink] = useState('');
   const [sessionResources, setSessionResources] = useState<SessionResource[]>([]);
   const [remarks, setRemarks] = useState('');
 
@@ -102,7 +106,10 @@ export function SessionSlideOver() {
     if (sourceSession) {
       setStudentId(sourceSession.studentId || (students[0]?.studentId || ''));
       setStudentName(sourceSession.studentName || '');
-      setTrackId(sourceSession.trackId || (tracks[0]?.id || ''));
+      const resolved = resolveDomainAndCourse(sourceSession.domain, sourceSession.course, sourceSession.trackId);
+      setDomain(resolved.domain);
+      setCourse(resolved.course);
+      setTrackId(resolved.course || sourceSession.trackId || '');
       setDate(duplicatingSession ? getTodayString() : sourceSession.date);
       setStartTime(sourceSession.startTime || '10:00');
       setEndTime(sourceSession.endTime || '11:30');
@@ -116,6 +123,13 @@ export function SessionSlideOver() {
       setCancellationReason((sourceSession.cancellationReason as any) || 'Student unavailable');
       setCustomReason('');
       setProgressLevel(sourceSession.progressLevel || 'Good');
+
+      const recUrl =
+        sourceSession.recordingClassLink ||
+        sourceSession.sessionResources?.find((r) => r.type === 'Recording')?.url ||
+        '';
+      setRecordingLink(recUrl);
+
       // Migrate old recordingClassLink to resources if needed
       let resources = Array.isArray(sourceSession.sessionResources) ? [...sourceSession.sessionResources] : [];
       if (resources.length === 0 && (sourceSession as any).recordingClassLink) {
@@ -136,7 +150,10 @@ export function SessionSlideOver() {
           const draft = JSON.parse(draftRaw);
           setStudentId(draft.studentId || (students[0]?.studentId || ''));
           setStudentName(draft.studentName || '');
-          setTrackId(draft.trackId || (tracks[0]?.id || ''));
+          const resolved = resolveDomainAndCourse(draft.domain, draft.course, draft.trackId);
+          setDomain(resolved.domain);
+          setCourse(resolved.course);
+          setTrackId(resolved.course || draft.trackId || '');
           setDate(draft.date || getTodayString());
           setStartTime(draft.startTime || '10:00');
           setEndTime(draft.endTime || '11:30');
@@ -148,6 +165,7 @@ export function SessionSlideOver() {
           setCancellationReason(draft.cancellationReason || 'Student unavailable');
           setCustomReason(draft.customReason || '');
           setProgressLevel(draft.progressLevel || 'Good');
+          setRecordingLink(draft.recordingLink || draft.recordingClassLink || '');
           setSessionResources(draft.sessionResources || []);
           setRemarks(draft.remarks || '');
           setHasDraft(true);
@@ -165,26 +183,29 @@ export function SessionSlideOver() {
   useEffect(() => {
     if (!isOpen || editingSession) return;
     const timer = setTimeout(() => {
-      if (topicsTaught.trim() || studentId || taskAssignment.trim()) {
+      if (topicsTaught.trim() || studentId || taskAssignment.trim() || recordingLink.trim()) {
         const draft = {
-          studentId, studentName, trackId, date, startTime, endTime,
+          studentId, studentName, domain, course, trackId, date, startTime, endTime,
           topicsTaught, upcomingTopics, taskAssignment, sessionStatus,
           attendance, cancellationReason, customReason, progressLevel,
-          sessionResources, remarks,
+          recordingLink, sessionResources, remarks,
         };
         localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
       }
     }, 1000);
     return () => clearTimeout(timer);
-  }, [isOpen, editingSession, studentId, studentName, trackId, date, startTime, endTime,
+  }, [isOpen, editingSession, studentId, studentName, domain, course, trackId, date, startTime, endTime,
       topicsTaught, upcomingTopics, taskAssignment, sessionStatus, attendance,
-      cancellationReason, customReason, progressLevel, sessionResources, remarks]);
+      cancellationReason, customReason, progressLevel, recordingLink, sessionResources, remarks]);
 
   const resetForm = () => {
     const firstStu = students[0];
     setStudentId(firstStu?.studentId || '');
     setStudentName(firstStu?.studentName || '');
-    setTrackId(tracks[0]?.id || '');
+    const resolved = resolveDomainAndCourse(firstStu?.domain, firstStu?.course);
+    setDomain(resolved.domain);
+    setCourse(resolved.course);
+    setTrackId(resolved.course || tracks[0]?.id || '');
     setDate(getTodayString());
     setStartTime('10:00');
     setEndTime('11:30');
@@ -196,6 +217,7 @@ export function SessionSlideOver() {
     setCancellationReason('Student unavailable');
     setCustomReason('');
     setProgressLevel('Good');
+    setRecordingLink('');
     setSessionResources([]);
     setRemarks('');
     setHasDraft(false);
@@ -212,11 +234,23 @@ export function SessionSlideOver() {
     const selected = students.find((s) => s.studentId === selectedId);
     if (selected) {
       setStudentName(selected.studentName);
-      if (!trackId && selected.domain) {
-        const matchedTrack = tracks.find((t) => t.name === selected.domain);
-        if (matchedTrack) setTrackId(matchedTrack.id);
-      }
+      const resolved = resolveDomainAndCourse(selected.domain, selected.course);
+      setDomain(resolved.domain);
+      setCourse(resolved.course);
+      setTrackId(resolved.course);
     }
+  };
+
+  const handleDomainChange = (newDomain: DomainType) => {
+    setDomain(newDomain);
+    const firstCourse = DOMAIN_COURSES[newDomain][0] || '';
+    setCourse(firstCourse);
+    setTrackId(firstCourse);
+  };
+
+  const handleCourseChange = (newCourse: string) => {
+    setCourse(newCourse);
+    setTrackId(newCourse);
   };
 
   // Session Resources handlers
@@ -259,6 +293,9 @@ export function SessionSlideOver() {
     if (!topicsTaught.trim()) {
       newErrors.topicsTaught = 'Please describe the topics covered in this session';
     }
+    if (recordingLink.trim() && !recordingLink.trim().match(/^https?:\/\/.+/i)) {
+      newErrors.recordingLink = 'Enter a valid URL (starting with http:// or https://)';
+    }
     // Validate resource URLs
     sessionResources.forEach((r, idx) => {
       if (r.url.trim() && !r.url.match(/^https?:\/\/.+/i)) {
@@ -274,7 +311,28 @@ export function SessionSlideOver() {
     if (!validate()) return;
 
     const finalReason = cancellationReason === 'Other' ? customReason.trim() : cancellationReason;
-    const cleanResources = sessionResources.filter((r) => r.url.trim());
+    const trimmedRecording = recordingLink.trim();
+    let cleanResources = sessionResources.filter((r) => r.url.trim());
+
+    if (trimmedRecording) {
+      const existingRecIdx = cleanResources.findIndex((r) => r.type === 'Recording');
+      if (existingRecIdx >= 0) {
+        cleanResources[existingRecIdx] = {
+          ...cleanResources[existingRecIdx],
+          url: trimmedRecording,
+          title: cleanResources[existingRecIdx].title || 'Session Recording',
+        };
+      } else {
+        cleanResources.unshift({
+          id: `res-${Date.now()}`,
+          type: 'Recording',
+          title: 'Session Recording',
+          url: trimmedRecording,
+        });
+      }
+    } else {
+      cleanResources = cleanResources.filter((r) => r.type !== 'Recording');
+    }
 
     try {
       if (editingSession) {
@@ -282,7 +340,9 @@ export function SessionSlideOver() {
           ...editingSession,
           studentId,
           studentName,
-          trackId,
+          domain,
+          course,
+          trackId: course || trackId,
           date,
           day,
           startTime,
@@ -296,7 +356,7 @@ export function SessionSlideOver() {
           taskAssignment: taskAssignment.trim(),
           assignmentStatus: taskAssignment.trim() ? 'Assigned' : 'Completed',
           sessionResources: cleanResources,
-          recordingClassLink: cleanResources[0]?.url || '',
+          recordingClassLink: trimmedRecording,
           progressLevel,
           remarks: remarks.trim(),
           cancellationReason: sessionStatus === 'Cancelled' ? finalReason : '',
@@ -308,7 +368,9 @@ export function SessionSlideOver() {
         await addSessionDB({
           studentId,
           studentName,
-          trackId,
+          domain,
+          course,
+          trackId: course || trackId,
           date,
           startTime,
           endTime,
@@ -319,7 +381,7 @@ export function SessionSlideOver() {
           taskAssignment: taskAssignment.trim(),
           assignmentStatus: taskAssignment.trim() ? 'Assigned' : 'Completed',
           sessionResources: cleanResources,
-          recordingClassLink: cleanResources[0]?.url || '',
+          recordingClassLink: trimmedRecording,
           progressLevel,
           remarks: remarks.trim(),
           cancellationReason: sessionStatus === 'Cancelled' ? finalReason : '',
@@ -390,76 +452,78 @@ export function SessionSlideOver() {
             {/* Form */}
             <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5 custom-scrollbar">
 
-              {/* Row 1: Student & Domain */}
+              {/* Row 1: Student */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label htmlFor="slide-student-select" className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400">
+                    Student <span className="text-rose-500">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => dispatch(openAddStudentModal(null))}
+                    className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Add Student
+                  </button>
+                </div>
+                <select
+                  id="slide-student-select"
+                  value={studentId}
+                  onChange={(e) => handleStudentSelect(e.target.value)}
+                  className={`w-full px-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-800/80 border rounded-lg text-neutral-900 dark:text-white focus:outline-none focus:ring-2 ${
+                    errors.studentId
+                      ? 'border-rose-300 focus:ring-rose-500/20'
+                      : 'border-neutral-200 dark:border-neutral-700 focus:ring-indigo-500/20'
+                  }`}
+                >
+                  {students.map((s) => (
+                    <option key={s.id} value={s.studentId}>
+                      {s.studentName} ({s.studentId})
+                    </option>
+                  ))}
+                </select>
+                {errors.studentId && (
+                  <p className="text-xs text-rose-500 mt-1">{errors.studentId}</p>
+                )}
+              </div>
+
+              {/* Row 2: Domain (Parent) & Course (Child) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label htmlFor="slide-student-select" className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400">
-                      Student <span className="text-rose-500">*</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => dispatch(openAddStudentModal(null))}
-                      className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5"
-                    >
-                      <Plus className="w-3 h-3" />
-                      Add Student
-                    </button>
-                  </div>
+                  <label htmlFor="slide-domain-select" className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
+                    Domain (Parent) <span className="text-rose-500">*</span>
+                  </label>
                   <select
-                    id="slide-student-select"
-                    value={studentId}
-                    onChange={(e) => handleStudentSelect(e.target.value)}
-                    className={`w-full px-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-800/80 border rounded-lg text-neutral-900 dark:text-white focus:outline-none focus:ring-2 ${
-                      errors.studentId
-                        ? 'border-rose-300 focus:ring-rose-500/20'
-                        : 'border-neutral-200 dark:border-neutral-700 focus:ring-indigo-500/20'
-                    }`}
+                    id="slide-domain-select"
+                    value={domain}
+                    onChange={(e) => handleDomainChange(e.target.value as DomainType)}
+                    className="w-full px-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                   >
-                    {students.map((s) => (
-                      <option key={s.id} value={s.studentId}>
-                        {s.studentName} ({s.studentId})
+                    {DOMAIN_OPTIONS.map((d) => (
+                      <option key={d} value={d}>
+                        {d}
                       </option>
                     ))}
                   </select>
-                  {errors.studentId && (
-                    <p className="text-xs text-rose-500 mt-1">{errors.studentId}</p>
-                  )}
                 </div>
 
                 <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label htmlFor="slide-domain-select" className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400">
-                      Domain <span className="text-rose-500">*</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => dispatch(openAddTrackModal())}
-                      className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5"
-                    >
-                      <Plus className="w-3 h-3" />
-                      Add Domain
-                    </button>
-                  </div>
+                  <label htmlFor="slide-course-select" className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
+                    Course (Child) <span className="text-rose-500">*</span>
+                  </label>
                   <select
-                    id="slide-domain-select"
-                    value={trackId}
-                    onChange={(e) => setTrackId(e.target.value)}
-                    className={`w-full px-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-800/80 border rounded-lg text-neutral-900 dark:text-white focus:outline-none focus:ring-2 ${
-                      errors.trackId
-                        ? 'border-rose-300 focus:ring-rose-500/20'
-                        : 'border-neutral-200 dark:border-neutral-700 focus:ring-indigo-500/20'
-                    }`}
+                    id="slide-course-select"
+                    value={course}
+                    onChange={(e) => handleCourseChange(e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                   >
-                    {tracks.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
+                    {(DOMAIN_COURSES[domain] || []).map((c) => (
+                      <option key={c} value={c}>
+                        {c}
                       </option>
                     ))}
                   </select>
-                  {errors.trackId && (
-                    <p className="text-xs text-rose-500 mt-1">{errors.trackId}</p>
-                  )}
                 </div>
               </div>
 
@@ -687,6 +751,66 @@ export function SessionSlideOver() {
                   placeholder="e.g. Deploy a multi-AZ VPC terraform template..."
                   className="w-full px-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-900 dark:text-white placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                 />
+              </div>
+
+              {/* Session Recording Link */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label htmlFor="slide-recording-link" className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400">
+                    Session Recording Link
+                  </label>
+                  {recordingLink && (
+                    <a
+                      href={recordingLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Test Link
+                    </a>
+                  )}
+                </div>
+                <div className="relative">
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none">
+                    <Video className="w-4 h-4" />
+                  </div>
+                  <input
+                    id="slide-recording-link"
+                    type="url"
+                    value={recordingLink}
+                    onChange={(e) => {
+                      setRecordingLink(e.target.value);
+                      if (errors.recordingLink) setErrors((prev) => ({ ...prev, recordingLink: '' }));
+                    }}
+                    placeholder="https://meet.google.com/... or Zoom, Loom, YouTube, Drive"
+                    className={`w-full pl-9 pr-8 py-2 text-sm bg-neutral-50 dark:bg-neutral-800/80 border rounded-lg text-neutral-900 dark:text-white placeholder-neutral-400 focus:outline-none focus:ring-2 ${
+                      errors.recordingLink
+                        ? 'border-rose-300 focus:ring-rose-500/20'
+                        : 'border-neutral-200 dark:border-neutral-700 focus:ring-indigo-500/20'
+                    }`}
+                  />
+                  {recordingLink && (
+                    <button
+                      type="button"
+                      onClick={() => setRecordingLink('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-rose-500 transition-colors"
+                      title="Remove recording link"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+                {errors.recordingLink ? (
+                  <p className="text-xs text-rose-500 mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    {errors.recordingLink}
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-neutral-400 mt-1">
+                    Add or paste a video recording link (Google Meet, Loom, Zoom, YouTube, Drive).
+                  </p>
+                )}
               </div>
 
               {/* Session Resources */}

@@ -3,6 +3,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Session, Student, Track, BackupData, Assignment } from '../types';
 import { formatDateDisplay, formatTimeDisplay } from './dateTime';
+import { resolveDomainAndCourse } from './domainCourses';
 
 /**
  * Format Session rows for tabular exports
@@ -10,25 +11,29 @@ import { formatDateDisplay, formatTimeDisplay } from './dateTime';
 function prepareSessionRows(sessions: Session[], tracks: Track[]) {
   const trackMap = new Map(tracks.map((t) => [t.id, t.name]));
 
-  return sessions.map((s) => ({
-    'Student ID': s.studentId || '—',
-    'Student Name': s.studentName || '—',
-    Date: s.date,
-    Day: s.day,
-    Track: trackMap.get(s.trackId) || s.trackId,
-    'Start Time': formatTimeDisplay(s.startTime),
-    'End Time': formatTimeDisplay(s.endTime),
-    Duration: s.durationText,
-    'Session Status': s.sessionStatus || s.classStatus,
-    Attendance: s.attendance || 'Present',
-    'Topics Taught': s.topicsTaught || '—',
-    'Task / Assignment': s.taskAssignment || '—',
-    'Assignment Status': s.assignmentStatus || '—',
-    'Progress Level': s.progressLevel || '—',
-    'Recording Link': (s.sessionResources && s.sessionResources[0]?.url) || s.recordingClassLink || '—',
-    Remarks: s.remarks || '—',
-    'Cancellation Reason': (s.sessionStatus || s.classStatus) === 'Cancelled' ? s.cancellationReason || '—' : 'N/A',
-  }));
+  return sessions.map((s) => {
+    const { domain, course } = resolveDomainAndCourse(s.domain, s.course, s.trackId);
+    return {
+      'Student ID': s.studentId || '—',
+      'Student Name': s.studentName || '—',
+      Date: s.date,
+      Day: s.day,
+      Domain: domain,
+      Course: course,
+      'Start Time': formatTimeDisplay(s.startTime),
+      'End Time': formatTimeDisplay(s.endTime),
+      Duration: s.durationText,
+      'Session Status': s.sessionStatus || s.classStatus,
+      Attendance: s.attendance || 'Present',
+      'Topics Taught': s.topicsTaught || '—',
+      'Task / Assignment': s.taskAssignment || '—',
+      'Assignment Status': s.assignmentStatus || '—',
+      'Progress Level': s.progressLevel || '—',
+      'Recording Link': (s.sessionResources && s.sessionResources[0]?.url) || s.recordingClassLink || '—',
+      Remarks: s.remarks || '—',
+      'Cancellation Reason': (s.sessionStatus || s.classStatus) === 'Cancelled' ? s.cancellationReason || '—' : 'N/A',
+    };
+  });
 }
 
 /**
@@ -47,7 +52,8 @@ export function exportSessionsToExcel(
     { wch: 20 }, // Student Name
     { wch: 12 }, // Date
     { wch: 12 }, // Day
-    { wch: 18 }, // Track
+    { wch: 14 }, // Domain
+    { wch: 22 }, // Course
     { wch: 12 }, // Start
     { wch: 12 }, // End
     { wch: 10 }, // Duration
@@ -77,7 +83,7 @@ export function exportSessionsToCsv(
 ) {
   const data = prepareSessionRows(sessions, tracks);
   if (data.length === 0) {
-    const emptyBlob = new Blob(['Student ID,Student Name,Date,Day,Track,Start Time,End Time,Duration,Session Status,Attendance,Topics Taught,Task / Assignment,Assignment Status,Progress Level,Recording Link,Remarks,Cancellation Reason\n'], {
+    const emptyBlob = new Blob(['Student ID,Student Name,Date,Day,Domain,Course,Start Time,End Time,Duration,Session Status,Attendance,Topics Taught,Task / Assignment,Assignment Status,Progress Level,Recording Link,Remarks,Cancellation Reason\n'], {
       type: 'text/csv;charset=utf-8;',
     });
     triggerDownload(emptyBlob, filename);
@@ -105,17 +111,21 @@ export function exportSessionsToCsv(
  * Export Student Master List to Excel / CSV
  */
 export function exportStudentsToExcel(students: Student[], filename = 'mentor-log-students.xlsx') {
-  const data = students.map((s) => ({
-    'Student ID': s.studentId,
-    'Student Name': s.studentName,
-    Email: s.email,
-    Phone: s.phone,
-    Domain: s.domain,
-    Batch: s.batch,
-    'Joining Date': s.joiningDate,
-    Status: s.status,
-    Notes: s.notes,
-  }));
+  const data = students.map((s) => {
+    const { domain, course } = resolveDomainAndCourse(s.domain, s.course);
+    return {
+      'Student ID': s.studentId,
+      'Student Name': s.studentName,
+      Email: s.email,
+      Phone: s.phone,
+      Domain: domain,
+      Course: course,
+      Batch: s.batch,
+      'Joining Date': s.joiningDate,
+      Status: s.status,
+      Notes: s.notes,
+    };
+  });
 
   const worksheet = XLSX.utils.json_to_sheet(data);
   worksheet['!cols'] = [
@@ -123,7 +133,8 @@ export function exportStudentsToExcel(students: Student[], filename = 'mentor-lo
     { wch: 22 }, // Name
     { wch: 26 }, // Email
     { wch: 16 }, // Phone
-    { wch: 18 }, // Domain
+    { wch: 14 }, // Domain
+    { wch: 24 }, // Course
     { wch: 12 }, // Batch
     { wch: 14 }, // Date
     { wch: 12 }, // Status
@@ -136,17 +147,21 @@ export function exportStudentsToExcel(students: Student[], filename = 'mentor-lo
 }
 
 export function exportStudentsToCsv(students: Student[], filename = 'mentor-log-students.csv') {
-  const data = students.map((s) => ({
-    'Student ID': s.studentId,
-    'Student Name': s.studentName,
-    Email: s.email,
-    Phone: s.phone,
-    Domain: s.domain,
-    Batch: s.batch,
-    'Joining Date': s.joiningDate,
-    Status: s.status,
-    Notes: s.notes,
-  }));
+  const data = students.map((s) => {
+    const { domain, course } = resolveDomainAndCourse(s.domain, s.course);
+    return {
+      'Student ID': s.studentId,
+      'Student Name': s.studentName,
+      Email: s.email,
+      Phone: s.phone,
+      Domain: domain,
+      Course: course,
+      Batch: s.batch,
+      'Joining Date': s.joiningDate,
+      Status: s.status,
+      Notes: s.notes,
+    };
+  });
 
   if (data.length === 0) return;
   const headers = Object.keys(data[0]);

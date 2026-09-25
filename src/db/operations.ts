@@ -1,6 +1,7 @@
 import { db } from './index';
 import { Student, Session, Assignment, Track, BackupData, SessionStatus, AttendanceStatus, AssignmentStatus, SessionResource } from '../types';
 import { calculateDay, calculateDuration } from '../utils/dateTime';
+import { resolveDomainAndCourse } from '../utils/domainCourses';
 
 /**
  * Operations for Students
@@ -20,8 +21,12 @@ export async function addStudentDB(studentData: Omit<Student, 'id' | 'createdAt'
     studentId = `STU-${String(maxNum + 1).padStart(3, '0')}`;
   }
 
+  const { domain, course } = resolveDomainAndCourse(studentData.domain, studentData.course);
+
   const newStudent: Student = {
     ...studentData,
+    domain,
+    course,
     id: `stu-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
     studentId,
     createdAt: new Date().toISOString(),
@@ -33,8 +38,11 @@ export async function addStudentDB(studentData: Omit<Student, 'id' | 'createdAt'
 }
 
 export async function updateStudentDB(student: Student) {
+  const { domain, course } = resolveDomainAndCourse(student.domain, student.course);
   const updated = {
     ...student,
+    domain,
+    course,
     updatedAt: new Date().toISOString(),
   };
   await db.students.put(updated);
@@ -65,15 +73,41 @@ export async function addSessionDB(sessionData: Omit<Session, 'id' | 'day' | 'du
     }
   }
 
+  let recordingClassLink = (sessionData.recordingClassLink || '').trim();
+  let resources = [...(sessionData.sessionResources || [])];
+  if (recordingClassLink) {
+    const recIndex = resources.findIndex((r) => r.type === 'Recording');
+    if (recIndex >= 0) {
+      resources[recIndex] = { ...resources[recIndex], url: recordingClassLink };
+    } else {
+      resources.unshift({
+        id: `res-${Date.now()}`,
+        type: 'Recording',
+        title: 'Session Recording',
+        url: recordingClassLink,
+      });
+    }
+  } else {
+    const recRes = resources.find((r) => r.type === 'Recording' && r.url);
+    if (recRes) {
+      recordingClassLink = recRes.url.trim();
+    }
+  }
+
+  const { domain, course } = resolveDomainAndCourse(sessionData.domain, sessionData.course, sessionData.trackId);
+
   const newSession: Session = {
     ...sessionData,
+    domain,
+    course,
     studentName,
     id: `sess-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
     day,
     durationMinutes,
     durationText,
+    recordingClassLink,
     upcomingTopics: sessionData.upcomingTopics || '',
-    sessionResources: sessionData.sessionResources || [],
+    sessionResources: resources,
     createdAt: now,
     updatedAt: now,
   };
@@ -87,6 +121,8 @@ export async function addSessionDB(sessionData: Omit<Session, 'id' | 'day' | 'du
       studentName: newSession.studentName,
       sessionId: newSession.id,
       taskTitle: newSession.taskAssignment.trim(),
+      domain: newSession.domain,
+      course: newSession.course,
       assignedDate: newSession.date,
       dueDate: newSession.date,
       status: newSession.assignmentStatus || 'Assigned',
@@ -113,19 +149,90 @@ export async function updateSessionDB(session: Session) {
     }
   }
 
+  let recordingClassLink = (session.recordingClassLink || '').trim();
+  let resources = [...(session.sessionResources || [])];
+  if (recordingClassLink) {
+    const recIndex = resources.findIndex((r) => r.type === 'Recording');
+    if (recIndex >= 0) {
+      resources[recIndex] = { ...resources[recIndex], url: recordingClassLink };
+    } else {
+      resources.unshift({
+        id: `res-${Date.now()}`,
+        type: 'Recording',
+        title: 'Session Recording',
+        url: recordingClassLink,
+      });
+    }
+  } else {
+    const recRes = resources.find((r) => r.type === 'Recording' && r.url);
+    if (recRes) {
+      recordingClassLink = recRes.url.trim();
+    }
+  }
+
+  const { domain, course } = resolveDomainAndCourse(session.domain, session.course, session.trackId);
+
   const updated: Session = {
     ...session,
+    domain,
+    course,
     studentName,
     day,
     durationMinutes,
     durationText,
+    recordingClassLink,
     upcomingTopics: session.upcomingTopics || '',
-    sessionResources: session.sessionResources || [],
+    sessionResources: resources,
     updatedAt: now,
   };
 
   await db.sessions.put(updated);
   return updated;
+}
+
+export async function updateSessionRecordingDB(sessionId: string, recordingUrl: string): Promise<Session> {
+  const session = await db.sessions.get(sessionId);
+  if (!session) throw new Error('Session not found');
+
+  const trimmed = recordingUrl.trim();
+  let updatedResources = [...(session.sessionResources || [])];
+
+  if (trimmed) {
+    const existingIdx = updatedResources.findIndex((r) => r.type === 'Recording');
+    if (existingIdx >= 0) {
+      updatedResources[existingIdx] = {
+        ...updatedResources[existingIdx],
+        url: trimmed,
+        title: updatedResources[existingIdx].title || 'Session Recording',
+      };
+    } else {
+      updatedResources.unshift({
+        id: `res-${Date.now()}`,
+        type: 'Recording',
+        title: 'Session Recording',
+        url: trimmed,
+      });
+    }
+  } else {
+    // If empty string, remove recording resource
+    updatedResources = updatedResources.filter(
+      (r) => r.type !== 'Recording' && r.url !== session.recordingClassLink
+    );
+  }
+
+  const updated: Session = {
+    ...session,
+    recordingClassLink: trimmed,
+    sessionResources: updatedResources,
+    updatedAt: new Date().toISOString(),
+  };
+
+  await db.sessions.put(updated);
+  return updated;
+}
+
+export async function removeSessionRecordingDB(sessionId: string): Promise<Session> {
+  return updateSessionRecordingDB(sessionId, '');
 }
 
 export async function duplicateSessionDB(sessionId: string) {
@@ -169,8 +276,11 @@ export async function updateSessionStatusDB(id: string, status: SessionStatus) {
  */
 export async function addAssignmentDB(assignmentData: Omit<Assignment, 'id' | 'createdAt' | 'updatedAt'>) {
   const now = new Date().toISOString();
+  const { domain, course } = resolveDomainAndCourse(assignmentData.domain, assignmentData.course, assignmentData.trackId);
   const newAssignment: Assignment = {
     ...assignmentData,
+    domain,
+    course,
     id: `asgn-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
     createdAt: now,
     updatedAt: now,
@@ -180,8 +290,11 @@ export async function addAssignmentDB(assignmentData: Omit<Assignment, 'id' | 'c
 }
 
 export async function updateAssignmentDB(assignment: Assignment) {
+  const { domain, course } = resolveDomainAndCourse(assignment.domain, assignment.course, assignment.trackId);
   const updated = {
     ...assignment,
+    domain,
+    course,
     updatedAt: new Date().toISOString(),
   };
   await db.assignments.put(updated);

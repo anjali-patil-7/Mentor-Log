@@ -57,6 +57,8 @@ export function useFilteredSessions(filters: FilterState): {
       const upcomingMatch = (s.upcomingTopics || '').toLowerCase().includes(query);
       const tasksMatch = (s.taskAssignment || '').toLowerCase().includes(query);
       const remarksMatch = (s.remarks || '').toLowerCase().includes(query);
+      const domainMatch = (s.domain || '').toLowerCase().includes(query);
+      const courseMatch = (s.course || '').toLowerCase().includes(query);
       const trackName = (trackMap.get(s.trackId) || '').toLowerCase();
       const trackMatch = trackName.includes(query);
 
@@ -67,6 +69,8 @@ export function useFilteredSessions(filters: FilterState): {
         !upcomingMatch &&
         !tasksMatch &&
         !remarksMatch &&
+        !domainMatch &&
+        !courseMatch &&
         !trackMatch
       ) {
         return false;
@@ -78,9 +82,29 @@ export function useFilteredSessions(filters: FilterState): {
       return false;
     }
 
-    // 3. Domain (Track) Filter
-    if (filters.trackId !== 'all' && s.trackId !== filters.trackId) {
-      return false;
+    // 3. Domain & Course Filters
+    if (filters.domain && filters.domain !== 'all') {
+      const sessionDomain = s.domain || 'Tech / IT';
+      if (sessionDomain.toLowerCase() !== filters.domain.toLowerCase()) {
+        return false;
+      }
+    }
+
+    if (filters.course && filters.course !== 'all') {
+      const sessionCourse = s.course || trackMap.get(s.trackId) || s.trackId;
+      if (sessionCourse.toLowerCase() !== filters.course.toLowerCase()) {
+        return false;
+      }
+    }
+
+    // Backward compatibility for trackId
+    if (filters.trackId && filters.trackId !== 'all') {
+      const matched = s.trackId === filters.trackId ||
+        (s.course && s.course.toLowerCase() === filters.trackId.toLowerCase()) ||
+        (s.domain && s.domain.toLowerCase() === filters.trackId.toLowerCase());
+      if (!matched) {
+        return false;
+      }
     }
 
     // 4. Session Status Filter (was classStatus)
@@ -128,8 +152,8 @@ export function useFilteredSessions(filters: FilterState): {
       return (a.studentName || '').localeCompare(b.studentName || '') * modifier;
     }
     if (sortField === 'track') {
-      const trackA = trackMap.get(a.trackId) || a.trackId;
-      const trackB = trackMap.get(b.trackId) || b.trackId;
+      const trackA = a.course || trackMap.get(a.trackId) || a.trackId || '';
+      const trackB = b.course || trackMap.get(b.trackId) || b.trackId || '';
       return trackA.localeCompare(trackB) * modifier;
     }
     if (sortField === 'duration') {

@@ -4,6 +4,8 @@ import { FilterState, SessionStatus, AttendanceStatus, AssignmentStatus, DatePre
 const initialState: FilterState = {
   searchQuery: '',
   studentId: 'all',
+  domain: 'all',
+  course: 'all',
   trackId: 'all',
   sessionStatus: 'all',
   attendance: 'all',
@@ -24,6 +26,13 @@ export const filtersSlice = createSlice({
     },
     setStudentFilter: (state, action: PayloadAction<string>) => {
       state.studentId = action.payload;
+    },
+    setDomainFilter: (state, action: PayloadAction<string>) => {
+      state.domain = action.payload;
+      state.course = 'all'; // Reset course when domain changes
+    },
+    setCourseFilter: (state, action: PayloadAction<string>) => {
+      state.course = action.payload;
     },
     setTrackFilter: (state, action: PayloadAction<string>) => {
       state.trackId = action.payload;
@@ -63,6 +72,8 @@ export const filtersSlice = createSlice({
     resetFilters: (state) => {
       state.searchQuery = '';
       state.studentId = 'all';
+      state.domain = 'all';
+      state.course = 'all';
       state.trackId = 'all';
       state.sessionStatus = 'all';
       state.attendance = 'all';
@@ -79,6 +90,8 @@ export const filtersSlice = createSlice({
 export const {
   setSearchQuery,
   setStudentFilter,
+  setDomainFilter,
+  setCourseFilter,
   setTrackFilter,
   setStatusFilter,
   setAttendanceFilter,

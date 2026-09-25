@@ -4,6 +4,8 @@ import { useAppDispatch, useAppSelector } from '../store';
 import {
   setSearchQuery,
   setStudentFilter,
+  setDomainFilter,
+  setCourseFilter,
   setTrackFilter,
   setStatusFilter,
   setAttendanceFilter,
@@ -13,6 +15,7 @@ import {
 } from '../store/filtersSlice';
 import { useStudents, useTracks, useFilteredSessions } from '../db/hooks';
 import { SessionStatus, AttendanceStatus, DatePreset } from '../types';
+import { DOMAIN_OPTIONS, DOMAIN_COURSES, ALL_COURSES, DomainType } from '../utils/domainCourses';
 
 export function FilterBar() {
   const dispatch = useAppDispatch();
@@ -28,7 +31,9 @@ export function FilterBar() {
   const hasActiveFilters = Boolean(
     filters.searchQuery.trim() ||
       filters.studentId !== 'all' ||
-      filters.trackId !== 'all' ||
+      (filters.domain && filters.domain !== 'all') ||
+      (filters.course && filters.course !== 'all') ||
+      (filters.trackId && filters.trackId !== 'all') ||
       filters.sessionStatus !== 'all' ||
       filters.attendance !== 'all' ||
       filters.datePreset !== 'all' ||
@@ -37,7 +42,10 @@ export function FilterBar() {
   );
 
   const activeStudent = students.find((s) => s.studentId === filters.studentId);
-  const activeTrack = tracks.find((t) => t.id === filters.trackId);
+  const availableCourses =
+    filters.domain && filters.domain !== 'all' && DOMAIN_COURSES[filters.domain as DomainType]
+      ? DOMAIN_COURSES[filters.domain as DomainType]
+      : ALL_COURSES;
 
   return (
     <div className="bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 px-4 sm:px-6 lg:px-8 py-3.5 space-y-3">
@@ -84,23 +92,41 @@ export function FilterBar() {
             ))}
           </select>
 
-          {/* 2. Domain Filter (was Track) */}
+          {/* 2. Domain Filter (Parent) */}
           <select
             id="filter-domain"
-            value={filters.trackId}
-            onChange={(e) => dispatch(setTrackFilter(e.target.value))}
+            value={filters.domain || 'all'}
+            onChange={(e) => dispatch(setDomainFilter(e.target.value))}
             aria-label="Filter by domain"
             className="px-2.5 py-1.5 text-xs bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-800 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-medium"
           >
             <option value="all">All Domains</option>
-            {tracks.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
+            {DOMAIN_OPTIONS.map((dom) => (
+              <option key={dom} value={dom}>
+                {dom}
               </option>
             ))}
           </select>
 
-          {/* 3. Session Status Filter */}
+          {/* 3. Course Filter (Child) */}
+          <select
+            id="filter-course"
+            value={filters.course || 'all'}
+            onChange={(e) => dispatch(setCourseFilter(e.target.value))}
+            aria-label="Filter by course"
+            className="px-2.5 py-1.5 text-xs bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-800 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-medium max-w-[170px] truncate"
+          >
+            <option value="all">
+              {filters.domain && filters.domain !== 'all' ? `All ${filters.domain} Courses` : 'All Courses'}
+            </option>
+            {availableCourses.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+
+          {/* 4. Session Status Filter */}
           <select
             id="filter-status"
             value={filters.sessionStatus}
@@ -116,7 +142,7 @@ export function FilterBar() {
             <option value="Holiday">Holiday</option>
           </select>
 
-          {/* 4. Attendance Filter */}
+          {/* 5. Attendance Filter */}
           <select
             id="filter-attendance"
             value={filters.attendance}
@@ -133,7 +159,7 @@ export function FilterBar() {
             <option value="Not Applicable">N/A</option>
           </select>
 
-          {/* 5. Date Range Preset Filter */}
+          {/* 6. Date Range Preset Filter */}
           <select
             id="filter-date-preset"
             value={filters.datePreset}
@@ -178,10 +204,19 @@ export function FilterBar() {
             </span>
           )}
 
-          {activeTrack && (
+          {filters.domain && filters.domain !== 'all' && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-medium">
-              Domain: {activeTrack.name}
-              <button onClick={() => dispatch(setTrackFilter('all'))} aria-label="Clear domain filter">
+              Domain: {filters.domain}
+              <button onClick={() => dispatch(setDomainFilter('all'))} aria-label="Clear domain filter">
+                <X className="w-3 h-3 hover:text-indigo-900" />
+              </button>
+            </span>
+          )}
+
+          {filters.course && filters.course !== 'all' && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-medium">
+              Course: {filters.course}
+              <button onClick={() => dispatch(setCourseFilter('all'))} aria-label="Clear course filter">
                 <X className="w-3 h-3 hover:text-indigo-900" />
               </button>
             </span>

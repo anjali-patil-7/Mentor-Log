@@ -16,6 +16,7 @@ import {
   BookOpen,
   TrendingUp,
   ArrowUpDown,
+  Video,
 } from 'lucide-react';
 import { useStudentById, useSessions, useAssignments, useTracks } from '../db/hooks';
 import { useAppDispatch } from '../store';
@@ -24,6 +25,7 @@ import { formatDateDisplay, formatTimeDisplay, formatMentorHours } from '../util
 import { exportStudentPdfReport, exportSessionsToExcel, exportSessionsToCsv } from '../utils/export';
 import { useToast } from '../components/Toast';
 import { Pagination } from '../components/Pagination';
+import { resolveDomainAndCourse, DOMAIN_THEMES } from '../utils/domainCourses';
 
 export function StudentProfilePage() {
   const { id } = useParams<{ id: string }>();
@@ -33,7 +35,7 @@ export function StudentProfilePage() {
 
   const [sessionOrder, setSessionOrder] = useState<'latest' | 'oldest'>('latest');
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(10);
 
   const student = useStudentById(id || '');
   const allSessions = useSessions();
@@ -43,12 +45,17 @@ export function StudentProfilePage() {
   const trackMap = new Map(tracks.map((t) => [t.id, t]));
 
   // Filter sessions and assignments specifically for this student
-  const studentSessions = allSessions.filter(
-    (s) => s.studentId === id || (student && s.studentId === student.studentId) || (student && s.studentName === student.studentName)
-  );
+  const studentSessions = allSessions.filter((s) => {
+    if (s.studentId === id) return true;
+    if (student) {
+      if (s.studentId === student.studentId || s.studentId === student.id) return true;
+      if (student.studentName && s.studentName.toLowerCase() === student.studentName.toLowerCase()) return true;
+    }
+    return false;
+  });
 
   const studentAssignments = allAssignments.filter(
-    (a) => a.studentId === id || (student && a.studentId === student.studentId)
+    (a) => a.studentId === id || (student && (a.studentId === student.studentId || a.studentId === student.id))
   );
 
   if (!student) {
@@ -138,9 +145,14 @@ export function StudentProfilePage() {
                   {student.status}
                 </span>
               </div>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                Domain Track: <strong className="text-neutral-800 dark:text-neutral-200">{student.domain}</strong> • Batch: {student.batch || '2026-B1'}
-              </p>
+              {(() => {
+                const { domain: stuDom, course: stuCourse } = resolveDomainAndCourse(student.domain, student.course);
+                return (
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                    Domain: <strong className="text-neutral-800 dark:text-neutral-200">{stuDom}</strong> • Course: <strong className="text-neutral-800 dark:text-neutral-200">{stuCourse || '—'}</strong> • Batch: {student.batch || '2026-B1'} • <strong className="text-indigo-600 dark:text-indigo-400">Total Mentor Hours: {formattedMentorHours}</strong>
+                  </p>
+                );
+              })()}
             </div>
           </div>
 
@@ -271,7 +283,7 @@ export function StudentProfilePage() {
                   <tr className="border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-800/50 font-semibold text-neutral-500">
                     <th className="py-2.5 px-3">Date</th>
                     <th className="py-2.5 px-3">Day</th>
-                    <th className="py-2.5 px-3">Track</th>
+                    <th className="py-2.5 px-3">Domain & Course</th>
                     <th className="py-2.5 px-3">Time</th>
                     <th className="py-2.5 px-3">Duration</th>
                     <th className="py-2.5 px-3">Status</th>
@@ -279,12 +291,18 @@ export function StudentProfilePage() {
                     <th className="py-2.5 px-3 min-w-[200px]">Topics Covered</th>
                     <th className="py-2.5 px-3 min-w-[180px]">Assignment</th>
                     <th className="py-2.5 px-3">Progress</th>
+                    <th className="py-2.5 px-3 whitespace-nowrap">Recording</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
                   {paginatedSessions.map((s) => {
                     const trackObj = trackMap.get(s.trackId);
                     const statusVal = s.sessionStatus || s.classStatus || 'Completed';
+                    const recUrl =
+                      s.recordingClassLink?.trim() ||
+                      s.sessionResources?.find((r) => r.type === 'Recording')?.url?.trim() ||
+                      '';
+
                     return (
                       <tr key={s.id} className="hover:bg-neutral-50/60 dark:hover:bg-neutral-800/40">
                         <td className="py-2.5 px-3 font-semibold text-neutral-900 dark:text-white whitespace-nowrap">
@@ -292,16 +310,33 @@ export function StudentProfilePage() {
                         </td>
                         <td className="py-2.5 px-3 text-neutral-500 whitespace-nowrap">{s.day}</td>
                         <td className="py-2.5 px-3 whitespace-nowrap">
-                          <span
-                            className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border"
-                            style={{
-                              backgroundColor: `${trackObj?.color || '#64748B'}15`,
-                              borderColor: `${trackObj?.color || '#64748B'}35`,
-                              color: trackObj?.color || '#64748B',
-                            }}
-                          >
-                            {trackObj?.name || s.trackId}
-                          </span>
+                          {(() => {
+                            const { domain: sDom, course: sCourse } = resolveDomainAndCourse(s.domain, s.course, s.trackId);
+                            const themeColor = DOMAIN_THEMES[sDom]?.primary || '#4F46E5';
+                            return (
+                              <div className="flex flex-col gap-0.5 items-start">
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border"
+                                  style={{
+                                    backgroundColor: `${themeColor}15`,
+                                    borderColor: `${themeColor}35`,
+                                    color: themeColor,
+                                  }}
+                                >
+                                  <span
+                                    className="w-1.5 h-1.5 rounded-full shrink-0"
+                                    style={{ backgroundColor: themeColor }}
+                                  />
+                                  <span>{sDom}</span>
+                                </span>
+                                {sCourse && (
+                                  <span className="text-[11px] text-neutral-600 dark:text-neutral-400 font-medium truncate max-w-[150px]" title={sCourse}>
+                                    {sCourse}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="py-2.5 px-3 font-mono text-neutral-600 dark:text-neutral-400 whitespace-nowrap">
                           {formatTimeDisplay(s.startTime)} - {formatTimeDisplay(s.endTime)}
@@ -328,6 +363,22 @@ export function StudentProfilePage() {
                             {s.progressLevel || 'Good'}
                           </span>
                         </td>
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          {recUrl ? (
+                            <a
+                              href={recUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100"
+                              title={recUrl}
+                            >
+                              <Video className="w-3 h-3" />
+                              <span>Recording</span>
+                            </a>
+                          ) : (
+                            <span className="text-neutral-400 italic text-[11px]">—</span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -341,6 +392,10 @@ export function StudentProfilePage() {
               totalItems={sortedSessions.length}
               pageSize={pageSize}
               onPageChange={setCurrentPage}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setCurrentPage(1);
+              }}
             />
           </div>
         ) : (
