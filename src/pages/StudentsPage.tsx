@@ -17,7 +17,7 @@ import { useStudents, useSessions } from '../db/hooks';
 import { useAppDispatch } from '../store';
 import { openAddStudentModal, setDeletingStudentId } from '../store/uiSlice';
 import { formatDateDisplay, formatMentorHours } from '../utils/dateTime';
-import { exportStudentsToExcel, exportStudentsToCsv } from '../utils/export';
+import { exportStudentsToExcel, exportStudentsToCsv, sortStudentsProperOrder, StudentSortOrder } from '../utils/export';
 import { deleteStudentDB } from '../db/operations';
 import { useToast } from '../components/Toast';
 import { Pagination } from '../components/Pagination';
@@ -32,13 +32,14 @@ export function StudentsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDomain, setSelectedDomain] = useState('all');
   const [selectedCourse, setSelectedCourse] = useState('all');
+  const [sortOrder, setSortOrder] = useState<StudentSortOrder>('id-asc');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
   // Reset pagination to page 1 when search or filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedDomain, selectedCourse]);
+  }, [searchQuery, selectedDomain, selectedCourse, sortOrder]);
 
   // Robust function to compute each student's stats
   const getStudentStats = (student: typeof students[0]) => {
@@ -92,19 +93,22 @@ export function StudentsPage() {
     return true;
   });
 
-  const totalPages = Math.ceil(filteredStudents.length / pageSize);
-  const paginatedStudents = filteredStudents.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  // Sort students in proper right order (default STU-001, STU-002, ...)
+  const sortedStudents = sortStudentsProperOrder(filteredStudents, sortOrder);
+
+  const totalPages = Math.ceil(sortedStudents.length / pageSize);
+  const paginatedStudents = sortedStudents.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const uniqueDomains = Array.from(new Set(students.map((s) => s.domain).filter(Boolean)));
 
   const handleExportExcel = () => {
-    exportStudentsToExcel(filteredStudents);
-    showToast(`Exported ${filteredStudents.length} students to Excel`, 'success');
+    exportStudentsToExcel(sortedStudents, 'mentor-log-students.xlsx', sortOrder);
+    showToast(`Exported ${sortedStudents.length} students to Excel`, 'success');
   };
 
   const handleExportCsv = () => {
-    exportStudentsToCsv(filteredStudents);
-    showToast(`Exported ${filteredStudents.length} students to CSV`, 'success');
+    exportStudentsToCsv(sortedStudents, 'mentor-log-students.csv', sortOrder);
+    showToast(`Exported ${sortedStudents.length} students to CSV`, 'success');
   };
 
   const handleDelete = async (id: string, name: string) => {
@@ -161,7 +165,7 @@ export function StudentsPage() {
           />
         </div>
 
-        {/* Domain & Course Select Filters */}
+        {/* Domain, Course & Order Select Filters */}
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
           <select
             value={selectedDomain}
@@ -196,8 +200,20 @@ export function StudentsPage() {
             ))}
           </select>
 
+          <select
+            value={sortOrder}
+            onChange={(e) => setSortOrder(e.target.value as StudentSortOrder)}
+            className="px-3 py-1.5 text-xs bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-800 dark:text-neutral-200 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+          >
+            <option value="id-asc">Student ID (STU-001 → STU-999)</option>
+            <option value="id-desc">Student ID (STU-999 → STU-001)</option>
+            <option value="oldest">Oldest to Latest (Joining Date)</option>
+            <option value="latest">Latest to Oldest (Joining Date)</option>
+            <option value="name-asc">Student Name (A → Z)</option>
+          </select>
+
           <span className="text-xs text-neutral-500 font-medium whitespace-nowrap">
-            Showing {filteredStudents.length} of {students.length}
+            Showing {sortedStudents.length} of {students.length}
           </span>
         </div>
       </div>

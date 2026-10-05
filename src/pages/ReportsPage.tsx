@@ -21,6 +21,10 @@ import {
   exportStudentPdfReport,
   exportStudentsToExcel,
   exportStudentsToCsv,
+  sortSessions,
+  sortStudentsProperOrder,
+  sortMultiStudentSessions,
+  StudentSortOrder,
 } from '../utils/export';
 import { formatDateDisplay } from '../utils/dateTime';
 import { useToast } from '../components/Toast';
@@ -36,8 +40,11 @@ export function ReportsPage() {
   const selectedStudentIds = useAppSelector((state) => state.ui.selectedStudentIds);
   const { showToast } = useToast();
 
+  const [sessionOrder, setSessionOrder] = useState<'latest' | 'oldest'>('latest');
+  const [studentOrder, setStudentOrder] = useState<StudentSortOrder>('id-asc');
+
   const { filteredSessions } = useFilteredSessions(filters);
-  const [individualStudentId, setIndividualStudentId] = useState(students[0]?.studentId || '');
+  const [individualStudentId, setIndividualStudentId] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
   const [studentPage, setStudentPage] = useState(1);
   const [studentPageSize, setStudentPageSize] = useState(9);
@@ -55,18 +62,25 @@ export function ReportsPage() {
     setPreviewPage(1);
   }, [filters]);
 
-  const individualStudent = students.find((s) => s.studentId === individualStudentId) || students[0] || null;
+  // Sorted students in proper right order (STU-001, STU-002, ...)
+  const sortedStudentsProper = sortStudentsProperOrder(students, 'id-asc');
+
+  const activeStudentId = individualStudentId || sortedStudentsProper[0]?.studentId || '';
+  const individualStudent = sortedStudentsProper.find((s) => s.studentId === activeStudentId) || sortedStudentsProper[0] || null;
   const individualSessions = sessions.filter(
-    (s) => s.studentId === individualStudentId || (individualStudent && s.studentName === individualStudent.studentName)
+    (s) => s.studentId === activeStudentId || (individualStudent && s.studentName === individualStudent.studentName)
   );
 
   // Selected Students Export Dataset
   const selectedStudents = students.filter((s) => selectedStudentIds.includes(s.studentId));
   const selectedSessions = sessions.filter((s) => selectedStudentIds.includes(s.studentId));
 
-  const filteredStudentList = students.filter((s) =>
-    s.studentName.toLowerCase().includes(studentSearch.toLowerCase()) ||
-    s.studentId.toLowerCase().includes(studentSearch.toLowerCase())
+  const filteredStudentList = sortStudentsProperOrder(
+    students.filter((s) =>
+      s.studentName.toLowerCase().includes(studentSearch.toLowerCase()) ||
+      s.studentId.toLowerCase().includes(studentSearch.toLowerCase())
+    ),
+    'id-asc'
   );
 
   const handleSelectAllStudents = () => {
@@ -83,15 +97,16 @@ export function ReportsPage() {
       showToast('No sessions matching current filters to export', 'error');
       return;
     }
+    const sorted = sortSessions(filteredSessions, sessionOrder);
     const tag = new Date().toISOString().slice(0, 10);
     if (format === 'pdf') {
-      exportStudentPdfReport(null, filteredSessions, tracks, `filtered-sessions-${tag}.pdf`);
+      exportStudentPdfReport(null, sorted, tracks, `filtered-sessions-${tag}.pdf`);
     } else if (format === 'xlsx') {
-      exportSessionsToExcel(filteredSessions, tracks, `filtered-sessions-${tag}.xlsx`);
+      exportSessionsToExcel(sorted, tracks, `filtered-sessions-${tag}.xlsx`);
     } else {
-      exportSessionsToCsv(filteredSessions, tracks, `filtered-sessions-${tag}.csv`);
+      exportSessionsToCsv(sorted, tracks, `filtered-sessions-${tag}.csv`);
     }
-    showToast(`Exported ${filteredSessions.length} filtered sessions to ${format.toUpperCase()}`, 'success');
+    showToast(`Exported ${sorted.length} filtered sessions (${sessionOrder === 'latest' ? 'Latest to Oldest' : 'Oldest to Latest'}) to ${format.toUpperCase()}`, 'success');
   };
 
   const handleExportIndividual = (format: 'pdf' | 'xlsx' | 'csv') => {
@@ -99,15 +114,16 @@ export function ReportsPage() {
       showToast('Please select a student', 'error');
       return;
     }
+    const sorted = sortSessions(individualSessions, sessionOrder);
     const tag = individualStudent.studentId;
     if (format === 'pdf') {
-      exportStudentPdfReport(individualStudent, individualSessions, tracks, `${tag}-progress-report.pdf`);
+      exportStudentPdfReport(individualStudent, sorted, tracks, `${tag}-progress-report.pdf`);
     } else if (format === 'xlsx') {
-      exportSessionsToExcel(individualSessions, tracks, `${tag}-sessions.xlsx`);
+      exportSessionsToExcel(sorted, tracks, `${tag}-sessions.xlsx`);
     } else {
-      exportSessionsToCsv(individualSessions, tracks, `${tag}-sessions.csv`);
+      exportSessionsToCsv(sorted, tracks, `${tag}-sessions.csv`);
     }
-    showToast(`Exported report for ${individualStudent.studentName} to ${format.toUpperCase()}`, 'success');
+    showToast(`Exported report for ${individualStudent.studentName} (${sessionOrder === 'latest' ? 'Latest to Oldest' : 'Oldest to Latest'}) to ${format.toUpperCase()}`, 'success');
   };
 
   const handleExportSelected = (format: 'pdf' | 'xlsx' | 'csv') => {
@@ -116,36 +132,56 @@ export function ReportsPage() {
       return;
     }
 
+    const sorted = sortMultiStudentSessions(selectedSessions, sessionOrder);
     const tag = new Date().toISOString().slice(0, 10);
     if (format === 'pdf') {
-      exportStudentPdfReport(null, selectedSessions, tracks, `selected-students-${tag}.pdf`);
+      exportStudentPdfReport(null, sorted, tracks, `selected-students-${tag}.pdf`);
     } else if (format === 'xlsx') {
-      exportSessionsToExcel(selectedSessions, tracks, `selected-students-${tag}.xlsx`);
+      exportSessionsToExcel(sorted, tracks, `selected-students-${tag}.xlsx`);
     } else {
-      exportSessionsToCsv(selectedSessions, tracks, `selected-students-${tag}.csv`);
+      exportSessionsToCsv(sorted, tracks, `selected-students-${tag}.csv`);
     }
-    showToast(`Exported ${selectedStudentIds.length} selected students to ${format.toUpperCase()}`, 'success');
+    showToast(`Exported ${selectedStudentIds.length} selected students (${sessionOrder === 'latest' ? 'Latest to Oldest' : 'Oldest to Latest'}) to ${format.toUpperCase()}`, 'success');
   };
 
   const handleExportAllStudents = (format: 'xlsx' | 'csv') => {
+    const sorted = sortStudentsProperOrder(students, studentOrder);
     if (format === 'xlsx') {
-      exportStudentsToExcel(students);
+      exportStudentsToExcel(sorted, 'mentor-log-students.xlsx', studentOrder);
     } else {
-      exportStudentsToCsv(students);
+      exportStudentsToCsv(sorted, 'mentor-log-students.csv', studentOrder);
     }
-    showToast(`Exported all ${students.length} students to ${format.toUpperCase()}`, 'success');
+    const orderLabel = studentOrder === 'id-asc' ? 'Student ID Order' : studentOrder === 'oldest' ? 'Oldest to Latest' : studentOrder === 'latest' ? 'Latest to Oldest' : 'Alphabetical';
+    showToast(`Exported all ${students.length} students (${orderLabel}) to ${format.toUpperCase()}`, 'success');
   };
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-white font-heading tracking-tight">
-          Reports & Export Hub
-        </h1>
-        <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-          Generate human-readable PDF progress reports, Excel worksheets, or CSV files for students and sessions
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-white font-heading tracking-tight">
+            Reports & Export Hub
+          </h1>
+          <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-1">
+            Generate human-readable PDF progress reports, Excel worksheets, or CSV files for students and sessions
+          </p>
+        </div>
+
+        {/* Global Session Order Control for Session Reports */}
+        <div className="flex items-center gap-2 p-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl shadow-2xs self-start sm:self-auto">
+          <span className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 whitespace-nowrap pl-1">
+            Session Report Order:
+          </span>
+          <select
+            value={sessionOrder}
+            onChange={(e) => setSessionOrder(e.target.value as 'latest' | 'oldest')}
+            className="px-2.5 py-1 text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-900 dark:text-white font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+          >
+            <option value="latest">Latest → Oldest (Newest First)</option>
+            <option value="oldest">Oldest → Latest (Chronological)</option>
+          </select>
+        </div>
       </div>
 
       {/* Grid: 4 Export Modules */}
@@ -168,7 +204,12 @@ export function ReportsPage() {
             </div>
 
             <div className="p-3 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg text-xs space-y-1 my-3">
-              <div>Active Filter Count: <strong>{filteredSessions.length} sessions</strong></div>
+              <div className="flex items-center justify-between">
+                <span>Active Filter Count: <strong>{filteredSessions.length} sessions</strong></span>
+                <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
+                  Order: {sessionOrder === 'latest' ? 'Latest → Oldest' : 'Oldest → Latest'}
+                </span>
+              </div>
               <div className="text-[11px] text-neutral-400">
                 Includes active search term, student filter, track filter, and date range.
               </div>
@@ -228,22 +269,31 @@ export function ReportsPage() {
               </div>
             </div>
 
-            <div className="my-3">
-              <label htmlFor="report-student-select" className="block text-xs font-semibold uppercase text-neutral-600 dark:text-neutral-400 mb-1">
-                Select Student:
-              </label>
-              <select
-                id="report-student-select"
-                value={individualStudentId}
-                onChange={(e) => setIndividualStudentId(e.target.value)}
-                className="w-full px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-900 dark:text-white font-semibold"
-              >
-                {students.map((s) => (
-                  <option key={s.id} value={s.studentId}>
-                    {s.studentName} ({s.studentId}) — {s.domain}
-                  </option>
-                ))}
-              </select>
+            <div className="my-3 space-y-2">
+              <div>
+                <label htmlFor="report-student-select" className="block text-xs font-semibold uppercase text-neutral-600 dark:text-neutral-400 mb-1">
+                  Select Student:
+                </label>
+                <select
+                  id="report-student-select"
+                  value={activeStudentId}
+                  onChange={(e) => setIndividualStudentId(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg text-neutral-900 dark:text-white font-semibold"
+                >
+                  {sortedStudentsProper.map((s) => (
+                    <option key={s.id} value={s.studentId}>
+                      {s.studentId}: {s.studentName} — {s.domain}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-between text-[11px] text-neutral-500 pt-1">
+                <span>Sessions Found: <strong>{individualSessions.length}</strong></span>
+                <span className="font-medium text-indigo-600 dark:text-indigo-400">
+                  Order: {sessionOrder === 'latest' ? 'Latest → Oldest' : 'Oldest → Latest'}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -253,7 +303,7 @@ export function ReportsPage() {
               className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors"
             >
               <FileText className="w-4 h-4" />
-              <span>PDF Progress Report</span>
+              <span>PDF Report</span>
             </button>
             <button
               onClick={() => handleExportIndividual('xlsx')}
@@ -261,6 +311,12 @@ export function ReportsPage() {
             >
               <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
               <span>Excel</span>
+            </button>
+            <button
+              onClick={() => handleExportIndividual('csv')}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
+            >
+              <span>CSV</span>
             </button>
           </div>
         </div>
@@ -305,6 +361,14 @@ export function ReportsPage() {
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
               <span>Export Excel</span>
+            </button>
+
+            <button
+              onClick={() => handleExportSelected('csv')}
+              disabled={selectedStudentIds.length === 0}
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 disabled:opacity-40"
+            >
+              <span>Export CSV</span>
             </button>
           </div>
         </div>
@@ -384,29 +448,45 @@ export function ReportsPage() {
       </div>
 
       {/* Module 4: Export All Students Master Table */}
-      <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl p-5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl p-5 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h3 className="text-sm font-bold text-neutral-900 dark:text-white font-heading">
             4. Export All Students Master Directory ({students.length} students)
           </h3>
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-neutral-500 mt-0.5">
             Exports complete student roster with Student ID, Name, Email, Phone, Domain, Batch, Joining Date, and Status
           </p>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-1.5 bg-neutral-50 dark:bg-neutral-800 px-2.5 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700">
+            <span className="text-[11px] font-semibold text-neutral-500 whitespace-nowrap">Order:</span>
+            <select
+              value={studentOrder}
+              onChange={(e) => setStudentOrder(e.target.value as StudentSortOrder)}
+              className="text-xs bg-transparent text-neutral-800 dark:text-neutral-200 font-bold focus:outline-none cursor-pointer"
+            >
+              <option value="id-asc" className="dark:bg-neutral-800">Student ID (STU-001 → STU-999)</option>
+              <option value="oldest" className="dark:bg-neutral-800">Oldest to Latest (Joining Date)</option>
+              <option value="latest" className="dark:bg-neutral-800">Latest to Oldest (Joining Date)</option>
+              <option value="name-asc" className="dark:bg-neutral-800">Student Name (A → Z)</option>
+            </select>
+          </div>
+
           <button
             onClick={() => handleExportAllStudents('xlsx')}
             className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors"
+            title="Download Excel file in selected order"
           >
             <FileSpreadsheet className="w-4 h-4" />
-            <span>All Students to Excel</span>
+            <span>All to Excel</span>
           </button>
           <button
             onClick={() => handleExportAllStudents('csv')}
             className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 transition-colors"
+            title="Download CSV file in selected order"
           >
-            <span>All Students to CSV</span>
+            <span>All to CSV</span>
           </button>
         </div>
       </div>

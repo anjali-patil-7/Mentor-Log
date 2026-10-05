@@ -4,6 +4,19 @@ import autoTable from 'jspdf-autotable';
 import { Session, Student, Track, BackupData, Assignment } from '../types';
 import { formatDateDisplay, formatTimeDisplay } from './dateTime';
 import { resolveDomainAndCourse } from './domainCourses';
+import {
+  sortSessions,
+  sortStudentsProperOrder,
+  sortMultiStudentSessions,
+  StudentSortOrder,
+} from './sorting';
+
+export {
+  sortSessions,
+  sortStudentsProperOrder,
+  sortMultiStudentSessions,
+  type StudentSortOrder,
+};
 
 /**
  * Format Session rows for tabular exports
@@ -107,11 +120,17 @@ export function exportSessionsToCsv(
   triggerDownload(blob, filename);
 }
 
+
 /**
  * Export Student Master List to Excel / CSV
  */
-export function exportStudentsToExcel(students: Student[], filename = 'mentor-log-students.xlsx') {
-  const data = students.map((s) => {
+export function exportStudentsToExcel(
+  students: Student[],
+  filename = 'mentor-log-students.xlsx',
+  sortOrder: StudentSortOrder = 'id-asc'
+) {
+  const sorted = sortStudentsProperOrder(students, sortOrder);
+  const data = sorted.map((s) => {
     const { domain, course } = resolveDomainAndCourse(s.domain, s.course);
     return {
       'Student ID': s.studentId,
@@ -146,8 +165,13 @@ export function exportStudentsToExcel(students: Student[], filename = 'mentor-lo
   XLSX.writeFile(workbook, filename);
 }
 
-export function exportStudentsToCsv(students: Student[], filename = 'mentor-log-students.csv') {
-  const data = students.map((s) => {
+export function exportStudentsToCsv(
+  students: Student[],
+  filename = 'mentor-log-students.csv',
+  sortOrder: StudentSortOrder = 'id-asc'
+) {
+  const sorted = sortStudentsProperOrder(students, sortOrder);
+  const data = sorted.map((s) => {
     const { domain, course } = resolveDomainAndCourse(s.domain, s.course);
     return {
       'Student ID': s.studentId,

@@ -22,7 +22,7 @@ import { useStudentById, useSessions, useAssignments, useTracks } from '../db/ho
 import { useAppDispatch } from '../store';
 import { openAddStudentModal, openAddPanel } from '../store/uiSlice';
 import { formatDateDisplay, formatTimeDisplay, formatMentorHours } from '../utils/dateTime';
-import { exportStudentPdfReport, exportSessionsToExcel, exportSessionsToCsv } from '../utils/export';
+import { exportStudentPdfReport, exportSessionsToExcel, exportSessionsToCsv, sortSessions } from '../utils/export';
 import { useToast } from '../components/Toast';
 import { Pagination } from '../components/Pagination';
 import { resolveDomainAndCourse, DOMAIN_THEMES } from '../utils/domainCourses';
@@ -88,29 +88,25 @@ export function StudentProfilePage() {
 
   const lastProgress = studentSessions.find((s) => s.progressLevel)?.progressLevel || 'Good';
 
-  // Sort sessions: default latest/newest first
-  const sortedSessions = [...studentSessions].sort((a, b) => {
-    const dateA = a.date || '';
-    const dateB = b.date || '';
-    if (dateA !== dateB) {
-      return sessionOrder === 'latest' ? dateB.localeCompare(dateA) : dateA.localeCompare(dateB);
-    }
-    return sessionOrder === 'latest'
-      ? (b.startTime || '').localeCompare(a.startTime || '')
-      : (a.startTime || '').localeCompare(b.startTime || '');
-  });
+  // Sort sessions: latest or oldest first
+  const sortedSessions = sortSessions(studentSessions, sessionOrder);
 
   const totalPages = Math.ceil(sortedSessions.length / pageSize);
   const paginatedSessions = sortedSessions.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const handleExportPdf = () => {
-    exportStudentPdfReport(student, studentSessions, tracks, `${student.studentId}-progress-report.pdf`);
-    showToast(`Exported PDF Mentor Progress Report for ${student.studentName}`, 'success');
+    exportStudentPdfReport(student, sortedSessions, tracks, `${student.studentId}-progress-report.pdf`);
+    showToast(`Exported PDF Report (${sessionOrder === 'latest' ? 'Latest to Oldest' : 'Oldest to Latest'}) for ${student.studentName}`, 'success');
   };
 
   const handleExportExcel = () => {
-    exportSessionsToExcel(studentSessions, tracks, `${student.studentId}-sessions.xlsx`);
-    showToast(`Exported Excel session log for ${student.studentName}`, 'success');
+    exportSessionsToExcel(sortedSessions, tracks, `${student.studentId}-sessions.xlsx`);
+    showToast(`Exported Excel session log (${sessionOrder === 'latest' ? 'Latest to Oldest' : 'Oldest to Latest'}) for ${student.studentName}`, 'success');
+  };
+
+  const handleExportCsv = () => {
+    exportSessionsToCsv(sortedSessions, tracks, `${student.studentId}-sessions.csv`);
+    showToast(`Exported CSV session log (${sessionOrder === 'latest' ? 'Latest to Oldest' : 'Oldest to Latest'}) for ${student.studentName}`, 'success');
   };
 
   return (
@@ -158,20 +154,45 @@ export function StudentProfilePage() {
 
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 mr-1 bg-neutral-100 dark:bg-neutral-800 px-2.5 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700">
+              <span className="text-[11px] font-semibold text-neutral-500 whitespace-nowrap">Report Order:</span>
+              <select
+                value={sessionOrder}
+                onChange={(e) => {
+                  setSessionOrder(e.target.value as 'latest' | 'oldest');
+                  setCurrentPage(1);
+                }}
+                className="text-xs bg-transparent text-neutral-800 dark:text-neutral-200 font-bold focus:outline-none cursor-pointer"
+              >
+                <option value="latest" className="dark:bg-neutral-800">Latest → Oldest</option>
+                <option value="oldest" className="dark:bg-neutral-800">Oldest → Latest</option>
+              </select>
+            </div>
+
             <button
               onClick={handleExportPdf}
               className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors"
+              title={`Export PDF Report (${sessionOrder === 'latest' ? 'Latest to Oldest' : 'Oldest to Latest'})`}
             >
               <FileText className="w-4 h-4" />
-              <span>Export PDF Report</span>
+              <span>Export PDF</span>
             </button>
 
             <button
               onClick={handleExportExcel}
               className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
+              title={`Export Excel Log (${sessionOrder === 'latest' ? 'Latest to Oldest' : 'Oldest to Latest'})`}
             >
               <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
               <span>Excel Log</span>
+            </button>
+
+            <button
+              onClick={handleExportCsv}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
+              title={`Export CSV Log (${sessionOrder === 'latest' ? 'Latest to Oldest' : 'Oldest to Latest'})`}
+            >
+              <span>CSV Log</span>
             </button>
 
             <button
